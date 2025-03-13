@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="en">
+    <head>
+        <!DOCTYPE html>
+        <html lang="en">
+            <head>
+                <meta charset="UTF-8" />
+                <meta name="viewport"
+                    content="width=device-width, initial-scale=1.0" />
+                <title>Town Hall Visitor Sign-In</title>
+                <link rel="stylesheet" href="styles.css">
+                <script
+                    src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
+                <script
+                    src="https://www.gstatic.com/firebasejs/9.22.0/firebase-firestore-compat.js"></script>
+
+                <script defer src="app.js"></script>
+            </head>
+            <body>
+                <!-- Home Screen -->
+                <div id="home-screen" class="screen active">
+                    <h1>Welcome to Sutton Coldfield Town Hall</h1>
+                    <button id="start-button">Tap to Sign In</button>
+                    <br />
+                    <button id="manual-home-button">Manual Sign In</button>
+                </div>
+
+                <!-- Camera Recognition Screen -->
+                <div id="camera-screen" class="screen">
+                    <p>Scanning for face...</p>
+                    <video id="video" autoplay playsinline></video>
+                    <!-- Face confirmation prompt -->
+                    <div id="face-confirmation"
+                        style="display: none; margin-top: 20px;">
+                        <p>Are you <span id="visitor-name">John
+                                Smith</span>?</p>
+                        <button id="yes-button">Yes</button>
+                        <button id="no-button">No</button>
+                    </div>
+                    <p id="camera-error"
+                        style="color: red; display: none;">Camera not available.
+                        Please sign in manually.</p>
+                </div>
+
+                <!-- Manual Sign-In Screen -->
+                <div id="manual-signin-screen" class="screen">
+                    <p>We don’t recognize you. Please enter your name:</p>
+                    <input type="text" id="visitor-input"
+                        placeholder="Enter your name" />
+                    <button id="submit-name">Submit</button>
+                </div>
+
+                <!-- Confirmation Screen -->
+                <div id="confirmation-screen" class="screen">
+                    <h1 id="welcome-message"></h1>
+                    <p>To Sutton Coldfield Town Hall</p>
+                </div>
+
+            </body>
+        </html>

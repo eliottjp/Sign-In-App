@@ -1,0 +1,43 @@
+/* Basic reset & layout */
+body,
+html {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+  font-family: Arial, sans-serif;
+  background: #f0f0f0;
+}
+.screen {
+  display: none;
+  height: 100%;
+  width: 100%;
+  position: fixed;
+  top: 0;
+  left: 0;
+  background: #fff;
+  justify-content: center;
+  align-items: center;
+  flex-direction: column;
+  text-align: center;
+  padding: 20px;
+}
+.active {
+  display: flex;
+}
+button {
+  padding: 10px 20px;
+  margin: 10px;
+  font-size: 1.1em;
+  cursor: pointer;
+}
+#video {
+  width: 320px;
+  height: 240px;
+  background: #000;
+}
+input[type="text"] {
+  padding: 10px;
+  font-size: 1em;
+  width: 80%;
+  max-width: 300px;
+}
