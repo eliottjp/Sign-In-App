@@ -36,6 +36,8 @@ body {
   max-width: 500px;
   text-align: center;
   padding: 20px;
+  background: rgba(0, 0, 0, 0.8);
+  border-radius: 10px;
 }
 h1 {
   margin-bottom: 40px;
@@ -78,14 +80,14 @@ button:hover {
   z-index: 2;
   font-size: 1em;
 }
-/* Hidden screens for the sign-in and onboarding flows */
+/* Screens */
 .screen {
   display: none;
   position: fixed;
   top: 0;
   left: 0;
-  height: 100%;
   width: 100%;
+  height: 100%;
   z-index: 3;
   background: rgba(0, 0, 0, 0.8);
   color: #fff;
@@ -93,32 +95,61 @@ button:hover {
   overflow-y: auto;
 }
 .screen.active {
-  display: block;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 .centered {
   text-align: center;
 }
+/* Inputs */
 input[type="text"] {
   padding: 10px;
   font-size: 1em;
   width: 80%;
   max-width: 300px;
-  margin: 10px 0;
+  margin: 10px auto;
+  display: block;
+  border-radius: 4px;
+  border: none;
 }
 /* Video styling */
-#video {
+video {
   display: block;
   margin: 20px auto;
   width: 320px;
   height: 240px;
   background: #000;
 }
-
-/* Ensure the staff video is styled similarly */
-#staff-video {
-  display: block;
-  margin: 20px auto;
-  width: 320px;
-  height: 240px;
-  background: #000;
+/* Error messages */
+.error {
+  color: #ff8080;
+}
+/* Suggestion container styling */
+#visitor-suggestions-container,
+#checkout-suggestions-container {
+  max-width: 300px;
+  margin: 10px auto;
+  padding: 5px;
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 4px;
+}
+.suggestion {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 5px;
+  cursor: pointer;
+}
+.suggestion:hover {
+  background: rgba(255, 255, 255, 0.2);
+}
+.suggestion img {
+  width: 40px;
+  height: 40px;
+  border-radius: 4px;
+  object-fit: cover;
+}
+.suggestion span {
+  flex: 1;
 }

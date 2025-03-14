@@ -2,21 +2,36 @@
 <html lang="en">
     <head>
         <meta charset="UTF-8" />
-        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-        <title>Town Hall Visitor & Staff Sign-In</title>
+        <meta name="viewport" content="width=device-width, initial-scale=1" />
+        <title>Sutton Coldfield Town Hall - Visitor Kiosk</title>
         <link rel="stylesheet" href="styles.css" />
 
         <!-- Firebase SDKs -->
         <script
             src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
-        <script defer
+        <script
             src="https://www.gstatic.com/firebasejs/9.22.0/firebase-firestore-compat.js"></script>
+        <script
+            src="https://www.gstatic.com/firebasejs/9.22.0/firebase-storage-compat.js"></script>
 
-        <!-- Load the browser-ready (UMD) version of face-api.js -->
+        <!-- Initialize Firebase -->
+        <script>
+      const firebaseConfig = {
+        apiKey: "AIzaSyAJ5lJoueMwV8osZmwO-hqibOqlNXfqkqM",
+        authDomain: "sign-in-app-14d9d.firebaseapp.com",
+        projectId: "sign-in-app-14d9d",
+        storageBucket: "sign-in-app-14d9d",
+        messagingSenderId: "352962654007",
+        appId: "1:352962654007:web:16a8b36f129a961f78b4b2"
+      };
+      firebase.initializeApp(firebaseConfig);
+    </script>
+
+        <!-- Load face-api.js (UMD build) -->
         <script defer
             src="https://cdn.jsdelivr.net/npm/face-api.js/dist/face-api.min.js"></script>
 
-        <!-- Your custom app code -->
+        <!-- Our custom kiosk JS -->
         <script defer src="app.js"></script>
     </head>
     <body>
@@ -24,10 +39,8 @@
         <div class="container">
             <h1>Sutton Coldfield Town Hall</h1>
             <div class="button-group">
-                <button id="sign-in-btn" class="sign-in">Visitor Sign
-                    In</button>
-                <button id="sign-out-btn" class="sign-out">Visitor Sign
-                    Out</button>
+                <button id="sign-in-btn" class="sign-in">Sign In</button>
+                <button id="check-out-btn" class="sign-out">Check Out</button>
             </div>
         </div>
         <button id="staff-sign-in-btn" class="staff-sign-in">Staff Sign
@@ -36,18 +49,69 @@
         <!-- Visitor Face Recognition Screen -->
         <div id="camera-screen" class="screen">
             <div class="centered">
-                <p>Visitor: Scanning for face...</p>
+                <p>Scanning your face...</p>
                 <video id="video" autoplay playsinline></video>
-                <div id="face-confirmation"
-                    style="margin-top: 20px; display: none;">
+                <!-- Always visible Skip button -->
+                <button id="camera-skip-btn" class="btn">Skip Scan & Enter
+                    Manually</button>
+                <!-- Confirmation prompt if face recognized -->
+                <div id="face-confirmation" style="display: none;">
                     <p>Are you <span id="visitor-name"></span>?</p>
-                    <button id="yes-btn"
-                        style="padding: 10px 20px; margin: 10px;">Yes</button>
-                    <button id="no-btn"
-                        style="padding: 10px 20px; margin: 10px;">No</button>
+                    <button id="confirm-btn" class="btn">Yes</button>
+                    <button id="skip-btn" class="btn">Skip Scan</button>
                 </div>
-                <p id="camera-error" style="color: red; display: none;">Camera
-                    not available. Please use onboarding.</p>
+                <p id="camera-error" class="error" style="display: none;">Camera
+                    not available.</p>
+            </div>
+        </div>
+
+        <!-- Manual Sign In Screen with Custom Suggestions -->
+        <div id="manual-signin-screen" class="screen">
+            <div class="centered">
+                <p>Please enter your name:</p>
+                <input type="text" id="visitor-input"
+                    placeholder="Type your name" />
+                <div id="visitor-suggestions-container"></div>
+                <button id="finish-signin-btn" class="btn">Finish Sign
+                    In</button>
+            </div>
+        </div>
+
+        <!-- Manual Check Out Screen with Custom Suggestions -->
+        <div id="manual-checkout-screen" class="screen">
+            <div class="centered">
+                <p>Please select your name to check out:</p>
+                <input type="text" id="checkout-input"
+                    placeholder="Type your name" />
+                <div id="checkout-suggestions-container"></div>
+                <button id="finish-checkout-btn" class="btn">Finish Check
+                    Out</button>
+            </div>
+        </div>
+
+        <!-- Onboarding Screen: Reason for Visit -->
+        <div id="onboarding-4" class="screen centered">
+            <p>Please select your <strong>Reason for Visit</strong>:</p>
+            <button class="reason-btn btn" data-reason="Show">Show</button>
+            <button class="reason-btn btn"
+                data-reason="Viewing">Viewing</button>
+            <button class="reason-btn btn"
+                data-reason="Meeting">Meeting</button>
+        </div>
+
+        <!-- Onboarding Screen: Car Registration -->
+        <div id="onboarding-5" class="screen centered">
+            <p>Please enter your <strong>Car Registration</strong> (if parked at
+                back):</p>
+            <input type="text" id="car-reg" placeholder="Car Registration">
+            <button id="onboarding-5-finish" class="btn">Finish Sign In</button>
+        </div>
+
+        <!-- Confirmation Screen -->
+        <div id="confirmation-screen" class="screen">
+            <div class="centered">
+                <h1 id="welcome-message"></h1>
+                <p>Thank you!</p>
             </div>
         </div>
 
@@ -56,57 +120,31 @@
             <div class="centered">
                 <p>Staff: Scanning for face...</p>
                 <video id="staff-video" autoplay playsinline></video>
-                <div id="staff-face-confirmation"
-                    style="margin-top: 20px; display: none;">
+                <div id="staff-face-confirmation" style="display: none;">
                     <p>Are you <span id="staff-name"></span>?</p>
-                    <button id="staff-yes-btn"
-                        style="padding: 10px 20px; margin: 10px;">Yes</button>
-                    <button id="staff-no-btn"
-                        style="padding: 10px 20px; margin: 10px;">No</button>
+                    <button id="staff-confirm-btn" class="btn">Yes</button>
+                    <button id="staff-skip-btn" class="btn">Skip</button>
                 </div>
-                <p id="staff-camera-error"
-                    style="color: red; display: none;">Camera not available.
-                    Please try again.</p>
+                <p id="staff-camera-error" class="error"
+                    style="display: none;">Camera not available.</p>
             </div>
         </div>
 
-        <!-- Onboarding Screens for Visitors -->
+        <!-- Optional Visitor Onboarding Screens (for new visitors) -->
         <div id="onboarding-1" class="screen centered">
             <p>Please enter your <strong>First Name</strong>:</p>
-            <input type="text" id="first-name" placeholder="First Name" />
-            <button id="onboarding-1-next">Next</button>
+            <input type="text" id="first-name" placeholder="First Name">
+            <button id="onboarding-1-next" class="btn">Next</button>
         </div>
-
         <div id="onboarding-2" class="screen centered">
             <p>Please enter your <strong>Last Name</strong>:</p>
-            <input type="text" id="last-name" placeholder="Last Name" />
-            <button id="onboarding-2-next">Next</button>
+            <input type="text" id="last-name" placeholder="Last Name">
+            <button id="onboarding-2-next" class="btn">Next</button>
         </div>
-
         <div id="onboarding-3" class="screen centered">
             <p>Please enter your <strong>Company</strong>:</p>
-            <input type="text" id="company" placeholder="Company" />
-            <button id="onboarding-3-next">Next</button>
-        </div>
-
-        <div id="onboarding-4" class="screen centered">
-            <p>Please select your <strong>Reason for Visit</strong>:</p>
-            <button class="reason-btn" data-reason="Show">Show</button>
-            <button class="reason-btn" data-reason="Viewing">Viewing</button>
-            <button class="reason-btn" data-reason="Meeting">Meeting</button>
-        </div>
-
-        <div id="onboarding-5" class="screen centered">
-            <p>Please enter your <strong>Car Registration</strong> (if parked at
-                back):</p>
-            <input type="text" id="car-reg" placeholder="Car Registration" />
-            <button id="onboarding-5-finish">Finish</button>
-        </div>
-
-        <!-- Confirmation Screen -->
-        <div id="confirmation-screen" class="screen centered">
-            <h1 id="welcome-message"></h1>
-            <p>Welcome to Sutton Coldfield Town Hall</p>
+            <input type="text" id="company" placeholder="Company">
+            <button id="onboarding-3-next" class="btn">Next</button>
         </div>
     </body>
 </html>

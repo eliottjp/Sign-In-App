@@ -1,386 +1,471 @@
-// Firebase configuration and initialization
-const firebaseConfig = {
-  apiKey: "AIzaSyAJ5lJoueMwV8osZmwO-hqibOqlNXfqkqM",
-  authDomain: "sign-in-app-14d9d.firebaseapp.com",
-  projectId: "sign-in-app-14d9d",
-  storageBucket: "sign-in-app-14d9d.firebasestorage.app",
-  messagingSenderId: "352962654007",
-  appId: "1:352962654007:web:16a8b36f129a961f78b4b2",
-};
-firebase.initializeApp(firebaseConfig);
-const db = firebase.firestore();
+document.addEventListener("DOMContentLoaded", function () {
+  const db = firebase.firestore();
+  const storage = firebase.storage();
 
-// Global variables for visitor and staff sessions.
-let currentVisitor = null;
-let currentVisitorDocId = null;
-let currentStaff = null; // For staff sign in/out
-let stream = null;
-let onboardingData = {}; // For visitor onboarding
+  // Global variables
+  let currentVisitor = null;
+  let currentVisitorDocId = null;
+  let stream = null;
+  let onboardingData = {}; // To store additional details
 
-// Ensure face-api models are loaded only once.
-let modelsLoaded = false;
-async function loadFaceApiModels() {
-  if (!modelsLoaded) {
-    await faceapi.nets.tinyFaceDetector.loadFromUri("/models");
-    await faceapi.nets.faceLandmark68Net.loadFromUri("/models");
-    await faceapi.nets.faceRecognitionNet.loadFromUri("/models");
-    modelsLoaded = true;
+  // --- Load face-api.js Models (SSD MobileNet v1) ---
+  let modelsLoaded = false;
+  async function loadFaceApiModels() {
+    if (!modelsLoaded) {
+      await faceapi.nets.ssdMobilenetv1.loadFromUri("/models");
+      await faceapi.nets.faceLandmark68Net.loadFromUri("/models");
+      await faceapi.nets.faceRecognitionNet.loadFromUri("/models");
+      modelsLoaded = true;
+    }
   }
-}
 
-// Capture a face descriptor for visitor (from #video)
-async function captureFaceDescriptor() {
-  await loadFaceApiModels();
-  const video = document.getElementById("video");
-  const detection = await faceapi
-    .detectSingleFace(video, new faceapi.TinyFaceDetectorOptions())
-    .withFaceLandmarks()
-    .withFaceDescriptor();
-  if (detection) {
-    return Array.from(detection.descriptor);
+  // --- Capture Face Descriptor ---
+  async function captureFaceDescriptor(videoId) {
+    await loadFaceApiModels();
+    const video = document.getElementById(videoId);
+    const detection = await faceapi
+      .detectSingleFace(video, new faceapi.SsdMobilenetv1Options())
+      .withFaceLandmarks()
+      .withFaceDescriptor();
+    return detection ? Array.from(detection.descriptor) : null;
   }
-  return null;
-}
 
-// Capture a face descriptor for staff (from #staff-video)
-async function captureFaceDescriptorForStaff() {
-  await loadFaceApiModels();
-  const video = document.getElementById("staff-video");
-  const detection = await faceapi
-    .detectSingleFace(video, new faceapi.TinyFaceDetectorOptions())
-    .withFaceLandmarks()
-    .withFaceDescriptor();
-  if (detection) {
-    return Array.from(detection.descriptor);
+  // --- Capture Snapshot from Video ---
+  async function captureSnapshot(videoId) {
+    const video = document.getElementById(videoId);
+    const canvas = document.createElement("canvas");
+    canvas.width = video.videoWidth || 320;
+    canvas.height = video.videoHeight || 240;
+    const ctx = canvas.getContext("2d");
+    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+    return new Promise((resolve) => {
+      canvas.toBlob((blob) => {
+        resolve(blob);
+      }, "image/jpeg");
+    });
   }
-  return null;
-}
 
-// Compute Euclidean distance between two descriptor arrays.
-function computeEuclideanDistance(arr1, arr2) {
-  let sum = 0;
-  const len = Math.min(arr1.length, arr2.length);
-  for (let i = 0; i < len; i++) {
-    const diff = arr1[i] - arr2[i];
-    sum += diff * diff;
+  // --- Upload Image to Firebase Storage ---
+  async function uploadImage(blob, path) {
+    const fileRef = storage.ref().child(path);
+    await fileRef.put(blob);
+    return await fileRef.getDownloadURL();
   }
-  return Math.sqrt(sum);
-}
 
-// Utility to show a specific screen.
-function showScreen(screenId) {
-  document.querySelectorAll(".screen").forEach((screen) => {
-    screen.classList.remove("active");
-  });
-  if (screenId) {
-    document.getElementById(screenId).classList.add("active");
+  // --- Delete Image from Firebase Storage ---
+  async function deleteImage(path) {
+    try {
+      await storage.ref().child(path).delete();
+    } catch (err) {
+      console.error("Error deleting old image:", err);
+    }
   }
-}
 
-// Visitor Camera – start video and simulate visitor face recognition.
-async function startCamera() {
-  try {
-    stream = await navigator.mediaDevices.getUserMedia({ video: true });
-    const video = document.getElementById("video");
-    video.srcObject = stream;
-    setTimeout(simulateFaceRecognition, 3000);
-  } catch (err) {
-    document.getElementById("camera-error").style.display = "block";
-    console.error("Camera error:", err);
+  // --- Update Visitor Photo ---
+  async function updateVisitorPhoto(visitorId) {
+    const docRef = db.collection("visitors").doc(visitorId);
+    const docSnap = await docRef.get();
+    const data = docSnap.data();
+    const blob = await captureSnapshot("video");
+    const newPath = `visitorPhotos/${visitorId}_${Date.now()}.jpg`;
+    const newPhotoURL = await uploadImage(blob, newPath);
+    // Delete previous photo if exists
+    if (data.photoPath) {
+      await deleteImage(data.photoPath);
+    }
+    await docRef.update({ photo: newPhotoURL, photoPath: newPath });
+    return newPhotoURL;
   }
-}
 
-async function simulateFaceRecognition() {
-  const capturedDescriptor = await captureFaceDescriptor();
-  if (!capturedDescriptor) {
-    console.error("No face detected");
-    return;
+  // --- Utility: Show/Hide Screens ---
+  function showScreen(screenId) {
+    document.querySelectorAll(".screen").forEach((screen) => {
+      screen.classList.remove("active");
+    });
+    if (screenId) {
+      const el = document.getElementById(screenId);
+      if (el) el.classList.add("active");
+    }
   }
-  let matchedVisitor = null;
-  let bestDistance = 0.3;
-  try {
-    const querySnapshot = await db.collection("visitors").get();
-    querySnapshot.forEach((doc) => {
+
+  // --- Populate Custom Suggestion Lists ---
+  async function populateVisitorSuggestions() {
+    const container = document.getElementById("visitor-suggestions-container");
+    if (!container) return;
+    container.innerHTML = "";
+    const snapshot = await db.collection("visitors").get();
+    snapshot.forEach((doc) => {
       const data = doc.data();
-      if (data.descriptor && Array.isArray(data.descriptor)) {
-        const distance = computeEuclideanDistance(
-          capturedDescriptor,
-          data.descriptor
-        );
-        if (distance < bestDistance) {
-          bestDistance = distance;
-          matchedVisitor = {
-            id: doc.id,
-            name: data.name,
-            descriptor: data.descriptor,
-          };
-        }
+      if (data.name) {
+        const div = document.createElement("div");
+        div.classList.add("suggestion");
+        const img = document.createElement("img");
+        img.src = data.photo || "placeholder.jpg";
+        const span = document.createElement("span");
+        span.innerText = data.name;
+        div.appendChild(img);
+        div.appendChild(span);
+        div.addEventListener("click", () => {
+          document.getElementById("visitor-input").value = data.name;
+        });
+        container.appendChild(div);
       }
     });
-  } catch (error) {
-    console.error("Error fetching visitors:", error);
   }
-  if (matchedVisitor) {
-    currentVisitor = matchedVisitor.name;
-    currentVisitorDocId = matchedVisitor.id;
-    document.getElementById("visitor-name").innerText = matchedVisitor.name;
-    document.getElementById("face-confirmation").style.display = "block";
-  } else {
-    alert("Face not recognized. Please complete onboarding.");
-    showScreen("onboarding-1");
-  }
-}
 
-// Staff Camera – start video and simulate staff face recognition.
-async function startStaffCamera() {
-  try {
-    stream = await navigator.mediaDevices.getUserMedia({ video: true });
-    const video = document.getElementById("staff-video");
-    video.srcObject = stream;
-    setTimeout(simulateStaffRecognition, 3000);
-  } catch (err) {
-    document.getElementById("staff-camera-error").style.display = "block";
-    console.error("Staff camera error:", err);
-  }
-}
-
-async function simulateStaffRecognition() {
-  const capturedDescriptor = await captureFaceDescriptorForStaff();
-  if (!capturedDescriptor) {
-    console.error("No face detected for staff");
-    return;
-  }
-  let matchedStaff = null;
-  let bestDistance = 0.3;
-  try {
-    const querySnapshot = await db.collection("staff").get();
-    querySnapshot.forEach((doc) => {
-      const data = doc.data();
-      if (data.descriptor && Array.isArray(data.descriptor)) {
-        const distance = computeEuclideanDistance(
-          capturedDescriptor,
-          data.descriptor
-        );
-        if (distance < bestDistance) {
-          bestDistance = distance;
-          matchedStaff = {
-            id: doc.id,
-            name: data.name,
-            descriptor: data.descriptor,
-          };
-        }
-      }
-    });
-  } catch (error) {
-    console.error("Error fetching staff:", error);
-  }
-  if (matchedStaff) {
-    currentStaff = matchedStaff;
-    document.getElementById("staff-name").innerText = matchedStaff.name;
-    document.getElementById("staff-face-confirmation").style.display = "block";
-  } else {
-    alert("Staff face not recognized. Please try again.");
-    showScreen(null);
-  }
-}
-
-// Process a staff event: toggle sign in/out based on last event today.
-async function processStaffEvent(staff) {
-  try {
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    const tomorrow = new Date(today);
-    tomorrow.setDate(tomorrow.getDate() + 1);
+  async function populateCheckoutSuggestions() {
+    const container = document.getElementById("checkout-suggestions-container");
+    if (!container) return;
+    container.innerHTML = "";
     const snapshot = await db
-      .collection("staffEvents")
-      .where("staffId", "==", staff.id)
-      .where("timestamp", ">=", today.toISOString())
-      .where("timestamp", "<", tomorrow.toISOString())
-      .orderBy("timestamp", "desc")
-      .get();
-    let lastEventType = "signOut"; // default if none
-    if (!snapshot.empty) {
-      lastEventType = snapshot.docs[0].data().type;
-    }
-    const newEventType = lastEventType === "signIn" ? "signOut" : "signIn";
-    await db.collection("staffEvents").add({
-      staffId: staff.id,
-      timestamp: new Date().toISOString(),
-      type: newEventType,
-    });
-    alert(
-      `Staff ${staff.name} ${
-        newEventType === "signIn" ? "signed in" : "signed out"
-      }.`
-    );
-    if (stream) {
-      stream.getTracks().forEach((track) => track.stop());
-    }
-    showScreen(null);
-  } catch (error) {
-    console.error("Error processing staff event:", error);
-  }
-}
-
-// Visitor Check In/Out functions
-async function checkInVisitor(data, descriptor) {
-  try {
-    let fullName,
-      extraData = {};
-    if (typeof data === "object") {
-      fullName = data.firstName + " " + data.lastName;
-      extraData = {
-        company: data.company,
-        reason: data.reason,
-        carReg: data.carReg,
-      };
-    } else {
-      fullName = data;
-    }
-    let visitorDoc;
-    const visitorQuerySnapshot = await db
       .collection("visitors")
-      .where("name", "==", fullName)
+      .where("checkedIn", "==", true)
       .get();
-    if (visitorQuerySnapshot.empty) {
+    snapshot.forEach((doc) => {
+      const data = doc.data();
+      if (data.name) {
+        const div = document.createElement("div");
+        div.classList.add("suggestion");
+        const img = document.createElement("img");
+        img.src = data.photo || "placeholder.jpg";
+        const span = document.createElement("span");
+        span.innerText = data.name;
+        div.appendChild(img);
+        div.appendChild(span);
+        div.addEventListener("click", () => {
+          document.getElementById("checkout-input").value = data.name;
+        });
+        container.appendChild(div);
+      }
+    });
+  }
+
+  // --- Visitor Sign In Flow ---
+  async function startSignInFlow() {
+    try {
+      stream = await navigator.mediaDevices.getUserMedia({ video: true });
+      const video = document.getElementById("video");
+      video.srcObject = stream;
+      showScreen("camera-screen");
+      // Show skip button always
+      // Allow a 2-second delay for faster processing
+      setTimeout(async () => {
+        const descriptor = await captureFaceDescriptor("video");
+        if (!descriptor) {
+          alert("No face detected. Please try again or enter manually.");
+          showScreen("manual-signin-screen");
+          populateVisitorSuggestions();
+          return;
+        }
+        let matched = null;
+        const snapshot = await db.collection("visitors").get();
+        snapshot.forEach((doc) => {
+          const data = doc.data();
+          if (data.descriptor) {
+            const distance = faceapi.euclideanDistance(
+              descriptor,
+              data.descriptor
+            );
+            if (distance < 0.4) {
+              // Adjust threshold as needed
+              matched = { id: doc.id, name: data.name };
+            }
+          }
+        });
+        if (matched) {
+          currentVisitor = matched.name;
+          currentVisitorDocId = matched.id;
+          onboardingData.name = matched.name;
+          document.getElementById("visitor-name").innerText = matched.name;
+          // Show confirmation prompt with Yes/Skip buttons
+          document.getElementById("face-confirmation").style.display = "block";
+        } else {
+          alert("Face not recognized. Please sign in manually.");
+          showScreen("manual-signin-screen");
+          populateVisitorSuggestions();
+        }
+      }, 2000);
+    } catch (err) {
+      document.getElementById("camera-error").style.display = "block";
+      console.error("Camera error:", err);
+    }
+  }
+
+  async function finishManualSignIn() {
+    const name = document.getElementById("visitor-input").value.trim();
+    if (!name) {
+      alert("Please enter your name.");
+      return;
+    }
+    onboardingData.name = name;
+    let visitorId;
+    const snapshot = await db
+      .collection("visitors")
+      .where("name", "==", name)
+      .get();
+    if (snapshot.empty) {
       const docRef = await db.collection("visitors").add({
-        name: fullName,
-        descriptor: descriptor,
-        ...extraData,
+        name: name,
         checkedIn: true,
+        timestamp: new Date().toISOString(),
       });
-      visitorDoc = {
-        id: docRef.id,
-        data: { name: fullName, ...extraData, checkedIn: true },
-      };
+      visitorId = docRef.id;
     } else {
-      visitorDoc = {
-        id: visitorQuerySnapshot.docs[0].id,
-        data: visitorQuerySnapshot.docs[0].data(),
-      };
+      visitorId = snapshot.docs[0].id;
       await db
         .collection("visitors")
-        .doc(visitorDoc.id)
+        .doc(visitorId)
         .update({ checkedIn: true });
     }
-    await db.collection("signIns").add({
-      visitorId: visitorDoc.id,
-      timestamp: new Date().toISOString(),
-    });
-    currentVisitor = fullName;
-    currentVisitorDocId = visitorDoc.id;
-    document.getElementById("welcome-message").innerText =
-      "✅ Welcome, " + fullName + "!";
-    showScreen("confirmation-screen");
-    if (stream) {
-      stream.getTracks().forEach((track) => track.stop());
-    }
-    setTimeout(() => {
-      showScreen(null);
-    }, 3000);
-  } catch (error) {
-    console.error("Error during check-in:", error);
-  }
-}
-
-async function autoCheckOutVisitor(name) {
-  try {
-    await db
-      .collection("visitors")
-      .doc(currentVisitorDocId)
-      .update({ checkedIn: false });
-    await db.collection("checkOuts").add({
-      visitorId: currentVisitorDocId,
-      timestamp: new Date().toISOString(),
-    });
-    alert("✅ " + name + " has been checked out.");
-    currentVisitor = null;
-    currentVisitorDocId = null;
-    if (stream) {
-      stream.getTracks().forEach((track) => track.stop());
-    }
-    showScreen(null);
-  } catch (error) {
-    console.error("Error during auto check-out:", error);
-  }
-}
-
-// --- Event Listeners ---
-
-// Visitor Sign In/Out
-document.getElementById("sign-in-btn").addEventListener("click", () => {
-  showScreen("camera-screen");
-  startCamera();
-});
-document.getElementById("sign-out-btn").addEventListener("click", () => {
-  if (currentVisitor) {
-    autoCheckOutVisitor(currentVisitor);
-  } else {
-    alert("No visitor is currently signed in.");
-  }
-});
-document.getElementById("yes-btn").addEventListener("click", async () => {
-  const name = document.getElementById("visitor-name").innerText;
-  const descriptor = await captureFaceDescriptor();
-  if (descriptor) {
-    checkInVisitor(name, descriptor);
-  }
-});
-document.getElementById("no-btn").addEventListener("click", () => {
-  showScreen("onboarding-1");
-});
-
-// Visitor Onboarding Flow
-document.getElementById("onboarding-1-next").addEventListener("click", () => {
-  const firstName = document.getElementById("first-name").value.trim();
-  if (firstName) {
-    onboardingData.firstName = firstName;
-    showScreen("onboarding-2");
-  } else {
-    alert("Please enter your first name.");
-  }
-});
-document.getElementById("onboarding-2-next").addEventListener("click", () => {
-  const lastName = document.getElementById("last-name").value.trim();
-  if (lastName) {
-    onboardingData.lastName = lastName;
-    showScreen("onboarding-3");
-  } else {
-    alert("Please enter your last name.");
-  }
-});
-document.getElementById("onboarding-3-next").addEventListener("click", () => {
-  const company = document.getElementById("company").value.trim();
-  if (company) {
-    onboardingData.company = company;
+    currentVisitor = name;
+    currentVisitorDocId = visitorId;
+    // Proceed to onboarding flow for additional details (always ask reason)
     showScreen("onboarding-4");
-  } else {
-    alert("Please enter your company.");
   }
-});
-document.querySelectorAll(".reason-btn").forEach((button) => {
-  button.addEventListener("click", () => {
-    onboardingData.reason = button.getAttribute("data-reason");
-    showScreen("onboarding-5");
-  });
-});
-document.getElementById("onboarding-5-finish").addEventListener("click", () => {
-  const carReg = document.getElementById("car-reg").value.trim();
-  onboardingData.carReg = carReg;
-  captureFaceDescriptor().then((descriptor) => {
-    checkInVisitor(onboardingData, descriptor);
-  });
-});
 
-// Staff Sign In/Out
-document.getElementById("staff-sign-in-btn").addEventListener("click", () => {
-  showScreen("staff-camera-screen");
-  startStaffCamera();
-});
-document.getElementById("staff-yes-btn").addEventListener("click", async () => {
-  if (!currentStaff) return;
-  processStaffEvent(currentStaff);
-});
-document.getElementById("staff-no-btn").addEventListener("click", () => {
-  showScreen(null);
+  // --- Onboarding Flow: Reason for Visit ---
+  document.querySelectorAll(".reason-btn").forEach((button) => {
+    button.addEventListener("click", () => {
+      onboardingData.reason = button.getAttribute("data-reason");
+      showScreen("onboarding-5");
+    });
+  });
+
+  // --- Onboarding Flow: Car Registration & Complete Sign In ---
+  document
+    .getElementById("onboarding-5-finish")
+    .addEventListener("click", async () => {
+      onboardingData.carReg = document.getElementById("car-reg").value.trim();
+      // Update visitor record with reason and car reg, and capture/update photo
+      await updateVisitorPhoto(currentVisitorDocId);
+      await db
+        .collection("visitors")
+        .doc(currentVisitorDocId)
+        .update({
+          reason: onboardingData.reason || "",
+          carReg: onboardingData.carReg || "",
+        });
+      await db.collection("signIns").add({
+        visitorId: currentVisitorDocId,
+        timestamp: new Date().toISOString(),
+        reason: onboardingData.reason || "",
+        carReg: onboardingData.carReg || "",
+      });
+      document.getElementById("welcome-message").innerText =
+        "✅ Welcome, " + onboardingData.name + "!";
+      showScreen("confirmation-screen");
+      setTimeout(() => location.reload(), 3000);
+    });
+
+  // --- Visitor Check Out Flow ---
+  async function startCheckOutFlow() {
+    try {
+      stream = await navigator.mediaDevices.getUserMedia({ video: true });
+      const video = document.getElementById("video");
+      video.srcObject = stream;
+      showScreen("camera-screen");
+      setTimeout(async () => {
+        const descriptor = await captureFaceDescriptor("video");
+        let matched = null;
+        const snapshot = await db.collection("visitors").get();
+        snapshot.forEach((doc) => {
+          const data = doc.data();
+          if (data.descriptor) {
+            const distance = faceapi.euclideanDistance(
+              descriptor,
+              data.descriptor
+            );
+            if (distance < 0.4) {
+              matched = { id: doc.id, name: data.name };
+            }
+          }
+        });
+        if (matched) {
+          await db
+            .collection("visitors")
+            .doc(matched.id)
+            .update({ checkedIn: false });
+          await db.collection("checkOuts").add({
+            visitorId: matched.id,
+            timestamp: new Date().toISOString(),
+          });
+          alert("✅ " + matched.name + " checked out.");
+          showScreen("confirmation-screen");
+          setTimeout(() => location.reload(), 3000);
+        } else {
+          alert("Face not recognized. Please check out manually.");
+          showScreen("manual-checkout-screen");
+          populateCheckoutSuggestions();
+        }
+      }, 2000);
+    } catch (err) {
+      document.getElementById("camera-error").style.display = "block";
+      console.error("Camera error:", err);
+    }
+  }
+
+  async function finishManualCheckOut() {
+    const name = document.getElementById("checkout-input").value.trim();
+    if (!name) {
+      alert("Please enter your name.");
+      return;
+    }
+    const snapshot = await db
+      .collection("visitors")
+      .where("name", "==", name)
+      .get();
+    if (snapshot.empty) {
+      alert("No record found for " + name);
+      return;
+    }
+    const visitorId = snapshot.docs[0].id;
+    await db.collection("visitors").doc(visitorId).update({ checkedIn: false });
+    await db.collection("checkOuts").add({
+      visitorId: visitorId,
+      timestamp: new Date().toISOString(),
+    });
+    alert("✅ " + name + " checked out.");
+    showScreen("confirmation-screen");
+    setTimeout(() => location.reload(), 3000);
+  }
+
+  // --- Confirmation Buttons for Recognized Face ---
+  document.getElementById("confirm-btn").addEventListener("click", () => {
+    // Proceed to onboarding even if face recognized to ask reason for visit.
+    if (currentVisitor) {
+      onboardingData.name = currentVisitor;
+      showScreen("onboarding-4");
+    }
+  });
+  document.getElementById("skip-btn").addEventListener("click", () => {
+    showScreen("manual-signin-screen");
+    populateVisitorSuggestions();
+  });
+
+  // --- Always-Visible Skip Button during Scanning ---
+  document.getElementById("camera-skip-btn").addEventListener("click", () => {
+    showScreen("manual-signin-screen");
+    populateVisitorSuggestions();
+  });
+
+  // --- Event Listeners for Kiosk Buttons ---
+  document
+    .getElementById("sign-in-btn")
+    .addEventListener("click", startSignInFlow);
+  document
+    .getElementById("finish-signin-btn")
+    .addEventListener("click", finishManualSignIn);
+  document
+    .getElementById("check-out-btn")
+    .addEventListener("click", startCheckOutFlow);
+  document
+    .getElementById("finish-checkout-btn")
+    .addEventListener("click", finishManualCheckOut);
+
+  // --- Staff Functions (unchanged for now) ---
+  let currentStaff = null;
+  let capturedStaffDescriptor = null;
+  async function startStaffCamera() {
+    try {
+      stream = await navigator.mediaDevices.getUserMedia({ video: true });
+      const video = document.getElementById("staff-video");
+      video.srcObject = stream;
+      setTimeout(simulateStaffRecognition, 2000);
+    } catch (err) {
+      document.getElementById("staff-camera-error").style.display = "block";
+      console.error("Staff camera error:", err);
+    }
+  }
+
+  async function simulateStaffRecognition() {
+    const capturedDescriptor = await captureFaceDescriptor("staff-video");
+    if (!capturedDescriptor) {
+      console.error("No face detected for staff");
+      return;
+    }
+    let matchedStaff = null;
+    let bestDistance = 0.3;
+    try {
+      const querySnapshot = await db.collection("staff").get();
+      querySnapshot.forEach((doc) => {
+        const data = doc.data();
+        if (data.descriptor) {
+          const distance = faceapi.euclideanDistance(
+            capturedDescriptor,
+            data.descriptor
+          );
+          if (distance < bestDistance) {
+            bestDistance = distance;
+            matchedStaff = {
+              id: doc.id,
+              name: data.name,
+              descriptor: data.descriptor,
+            };
+          }
+        }
+      });
+    } catch (error) {
+      console.error("Error fetching staff:", error);
+    }
+    if (matchedStaff) {
+      currentStaff = matchedStaff;
+      document.getElementById("staff-name").innerText = matchedStaff.name;
+      document.getElementById("staff-face-confirmation").style.display =
+        "block";
+    } else {
+      capturedStaffDescriptor = capturedDescriptor;
+      alert("Staff face not recognized. Please register new staff.");
+      showScreen(null);
+    }
+  }
+
+  async function processStaffEvent(staff) {
+    try {
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      const tomorrow = new Date(today);
+      tomorrow.setDate(tomorrow.getDate() + 1);
+      const snapshot = await db
+        .collection("staffEvents")
+        .where("staffId", "==", staff.id)
+        .where("timestamp", ">=", today.toISOString())
+        .where("timestamp", "<", tomorrow.toISOString())
+        .orderBy("timestamp", "desc")
+        .get();
+      let lastEventType = "signOut";
+      if (!snapshot.empty) {
+        lastEventType = snapshot.docs[0].data().type;
+      }
+      const newEventType = lastEventType === "signIn" ? "signOut" : "signIn";
+      await db.collection("staffEvents").add({
+        staffId: staff.id,
+        timestamp: new Date().toISOString(),
+        type: newEventType,
+      });
+      alert(
+        `Staff ${staff.name} ${
+          newEventType === "signIn" ? "signed in" : "signed out"
+        }.`
+      );
+      if (stream) stream.getTracks().forEach((t) => t.stop());
+      showScreen(null);
+    } catch (error) {
+      console.error("Error processing staff event:", error);
+    }
+  }
+
+  // --- Staff Event Listeners ---
+  document.getElementById("staff-sign-in-btn").addEventListener("click", () => {
+    showScreen("staff-camera-screen");
+    startStaffCamera();
+  });
+  document
+    .getElementById("staff-confirm-btn")
+    .addEventListener("click", async () => {
+      if (!currentStaff) return;
+      processStaffEvent(currentStaff);
+    });
+  document.getElementById("staff-skip-btn").addEventListener("click", () => {
+    showScreen(null);
+  });
 });
