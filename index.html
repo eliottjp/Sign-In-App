@@ -1,60 +1,112 @@
 <!DOCTYPE html>
 <html lang="en">
     <head>
-        <!DOCTYPE html>
-        <html lang="en">
-            <head>
-                <meta charset="UTF-8" />
-                <meta name="viewport"
-                    content="width=device-width, initial-scale=1.0" />
-                <title>Town Hall Visitor Sign-In</title>
-                <link rel="stylesheet" href="styles.css">
-                <script
-                    src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
-                <script
-                    src="https://www.gstatic.com/firebasejs/9.22.0/firebase-firestore-compat.js"></script>
+        <meta charset="UTF-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <title>Town Hall Visitor & Staff Sign-In</title>
+        <link rel="stylesheet" href="styles.css" />
 
-                <script defer src="app.js"></script>
-            </head>
-            <body>
-                <!-- Home Screen -->
-                <div id="home-screen" class="screen active">
-                    <h1>Welcome to Sutton Coldfield Town Hall</h1>
-                    <button id="start-button">Tap to Sign In</button>
-                    <br />
-                    <button id="manual-home-button">Manual Sign In</button>
+        <!-- Firebase SDKs -->
+        <script
+            src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
+        <script defer
+            src="https://www.gstatic.com/firebasejs/9.22.0/firebase-firestore-compat.js"></script>
+
+        <!-- Load the browser-ready (UMD) version of face-api.js -->
+        <script defer
+            src="https://cdn.jsdelivr.net/npm/face-api.js/dist/face-api.min.js"></script>
+
+        <!-- Your custom app code -->
+        <script defer src="app.js"></script>
+    </head>
+    <body>
+        <div class="overlay"></div>
+        <div class="container">
+            <h1>Sutton Coldfield Town Hall</h1>
+            <div class="button-group">
+                <button id="sign-in-btn" class="sign-in">Visitor Sign
+                    In</button>
+                <button id="sign-out-btn" class="sign-out">Visitor Sign
+                    Out</button>
+            </div>
+        </div>
+        <button id="staff-sign-in-btn" class="staff-sign-in">Staff Sign
+            In/Out</button>
+
+        <!-- Visitor Face Recognition Screen -->
+        <div id="camera-screen" class="screen">
+            <div class="centered">
+                <p>Visitor: Scanning for face...</p>
+                <video id="video" autoplay playsinline></video>
+                <div id="face-confirmation"
+                    style="margin-top: 20px; display: none;">
+                    <p>Are you <span id="visitor-name"></span>?</p>
+                    <button id="yes-btn"
+                        style="padding: 10px 20px; margin: 10px;">Yes</button>
+                    <button id="no-btn"
+                        style="padding: 10px 20px; margin: 10px;">No</button>
                 </div>
+                <p id="camera-error" style="color: red; display: none;">Camera
+                    not available. Please use onboarding.</p>
+            </div>
+        </div>
 
-                <!-- Camera Recognition Screen -->
-                <div id="camera-screen" class="screen">
-                    <p>Scanning for face...</p>
-                    <video id="video" autoplay playsinline></video>
-                    <!-- Face confirmation prompt -->
-                    <div id="face-confirmation"
-                        style="display: none; margin-top: 20px;">
-                        <p>Are you <span id="visitor-name">John
-                                Smith</span>?</p>
-                        <button id="yes-button">Yes</button>
-                        <button id="no-button">No</button>
-                    </div>
-                    <p id="camera-error"
-                        style="color: red; display: none;">Camera not available.
-                        Please sign in manually.</p>
+        <!-- Staff Face Recognition Screen -->
+        <div id="staff-camera-screen" class="screen">
+            <div class="centered">
+                <p>Staff: Scanning for face...</p>
+                <video id="staff-video" autoplay playsinline></video>
+                <div id="staff-face-confirmation"
+                    style="margin-top: 20px; display: none;">
+                    <p>Are you <span id="staff-name"></span>?</p>
+                    <button id="staff-yes-btn"
+                        style="padding: 10px 20px; margin: 10px;">Yes</button>
+                    <button id="staff-no-btn"
+                        style="padding: 10px 20px; margin: 10px;">No</button>
                 </div>
+                <p id="staff-camera-error"
+                    style="color: red; display: none;">Camera not available.
+                    Please try again.</p>
+            </div>
+        </div>
 
-                <!-- Manual Sign-In Screen -->
-                <div id="manual-signin-screen" class="screen">
-                    <p>We don’t recognize you. Please enter your name:</p>
-                    <input type="text" id="visitor-input"
-                        placeholder="Enter your name" />
-                    <button id="submit-name">Submit</button>
-                </div>
+        <!-- Onboarding Screens for Visitors -->
+        <div id="onboarding-1" class="screen centered">
+            <p>Please enter your <strong>First Name</strong>:</p>
+            <input type="text" id="first-name" placeholder="First Name" />
+            <button id="onboarding-1-next">Next</button>
+        </div>
 
-                <!-- Confirmation Screen -->
-                <div id="confirmation-screen" class="screen">
-                    <h1 id="welcome-message"></h1>
-                    <p>To Sutton Coldfield Town Hall</p>
-                </div>
+        <div id="onboarding-2" class="screen centered">
+            <p>Please enter your <strong>Last Name</strong>:</p>
+            <input type="text" id="last-name" placeholder="Last Name" />
+            <button id="onboarding-2-next">Next</button>
+        </div>
 
-            </body>
-        </html>
+        <div id="onboarding-3" class="screen centered">
+            <p>Please enter your <strong>Company</strong>:</p>
+            <input type="text" id="company" placeholder="Company" />
+            <button id="onboarding-3-next">Next</button>
+        </div>
+
+        <div id="onboarding-4" class="screen centered">
+            <p>Please select your <strong>Reason for Visit</strong>:</p>
+            <button class="reason-btn" data-reason="Show">Show</button>
+            <button class="reason-btn" data-reason="Viewing">Viewing</button>
+            <button class="reason-btn" data-reason="Meeting">Meeting</button>
+        </div>
+
+        <div id="onboarding-5" class="screen centered">
+            <p>Please enter your <strong>Car Registration</strong> (if parked at
+                back):</p>
+            <input type="text" id="car-reg" placeholder="Car Registration" />
+            <button id="onboarding-5-finish">Finish</button>
+        </div>
+
+        <!-- Confirmation Screen -->
+        <div id="confirmation-screen" class="screen centered">
+            <h1 id="welcome-message"></h1>
+            <p>Welcome to Sutton Coldfield Town Hall</p>
+        </div>
+    </body>
+</html>
