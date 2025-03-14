@@ -2,8 +2,20 @@
 <html lang="en">
     <head>
         <meta charset="UTF-8" />
-        <meta name="viewport" content="width=device-width, initial-scale=1" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
         <title>Admin Dashboard - Visitor & Staff Management</title>
+
+        <!-- Google Font for a modern look -->
+        <link
+            href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;600&display=swap"
+            rel="stylesheet" />
+
+        <!-- Font Awesome Icons -->
+        <link
+            rel="stylesheet"
+            href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.7.2/css/all.min.css" />
+
+        <!-- Custom Admin CSS -->
         <link rel="stylesheet" href="admin.css" />
 
         <!-- Firebase SDKs -->
@@ -12,166 +24,168 @@
         <script
             src="https://www.gstatic.com/firebasejs/9.22.0/firebase-firestore-compat.js"></script>
 
-        <!-- Initialize Firebase -->
+        <!-- Firebase Configuration -->
         <script>
-  const firebaseConfig = {
-    apiKey: "AIzaSyAJ5lJoueMwV8osZmwO-hqibOqlNXfqkqM",
-    authDomain: "sign-in-app-14d9d.firebaseapp.com",
-    projectId: "sign-in-app-14d9d",
-    storageBucket: "sign-in-app-14d9d",
-    messagingSenderId: "352962654007",
-    appId: "1:352962654007:web:16a8b36f129a961f78b4b2"
-  };
-  firebase.initializeApp(firebaseConfig);
-</script>
+      const firebaseConfig = {
+        apiKey: "AIzaSyAJ5lJoueMwV8osZmwO-hqibOqlNXfqkqM",
+        authDomain: "sign-in-app-14d9d.firebaseapp.com",
+        projectId: "sign-in-app-14d9d",
+        storageBucket: "sign-in-app-14d9d",
+        messagingSenderId: "352962654007",
+        appId: "1:352962654007:web:16a8b36f129a961f78b4b2"
+      };
+      firebase.initializeApp(firebaseConfig);
+    </script>
 
-        <!-- Load face-api.js -->
-        <script defer
-            src="https://cdn.jsdelivr.net/npm/face-api.js/dist/face-api.min.js"></script>
-
-        <!-- Your custom admin JS -->
+        <!-- Custom Admin JS -->
         <script defer src="admin.js"></script>
-
     </head>
     <body>
-        <header>
-            <div class="header-container">
-                <h1>Visitor & Staff Management Dashboard</h1>
-                <nav>
-                    <ul>
-                        <li><a href="#current-visitors">Visitors</a></li>
-                        <li><a href="#all-visitors">All Visitors</a></li>
-                        <li><a href="#staff-attendance">Staff
-                                Attendance</a></li>
-                        <li><a href="#emergency-report-section">Emergency
-                                Report</a></li>
-                    </ul>
-                </nav>
+        <!-- Sidebar Navigation -->
+        <div class="sidebar">
+            <h2>Admin Dashboard</h2>
+            <nav>
+                <ul>
+                    <li>
+                        <a href="#" data-page="dashboard" class="active"><i
+                                class="fa fa-home"></i> Dashboard</a>
+                    </li>
+                    <li>
+                        <a href="#" data-page="current-visitors"><i
+                                class="fa fa-user-check"></i> Current
+                            Visitors</a>
+                    </li>
+                    <li>
+                        <a href="#" data-page="all-visitors"><i
+                                class="fa fa-users"></i> All Visitors</a>
+                    </li>
+                    <li>
+                        <a href="#" data-page="staff-attendance"><i
+                                class="fa fa-user-tie"></i> Staff</a>
+                    </li>
+                    <li>
+                        <a href="#" data-page="emergency-report"
+                            class="emergency"><i
+                                class="fa fa-exclamation-triangle"></i>
+                            Emergency</a>
+                    </li>
+                </ul>
+            </nav>
+        </div>
+
+        <!-- Main Content Area -->
+        <div class="main-content">
+            <!-- Dashboard Page -->
+            <div id="dashboard" class="page active">
+                <h1>Dashboard</h1>
+                <!-- Counters for Dashboard -->
+                <div id="dashboard-counters">
+                    <div class="grid">
+                        <div class="grid-item">
+                            <h3>
+                                Current Visitors:
+                                <span id="dashboard-current">0</span>
+                            </h3>
+                        </div>
+                        <div class="grid-item">
+                            <h3>
+                                Total Visitors:
+                                <span id="dashboard-all">0</span>
+                            </h3>
+                        </div>
+                        <div class="grid-item">
+                            <h3>
+                                Staff Signed In:
+                                <span id="dashboard-staff">0</span>
+                            </h3>
+                        </div>
+                    </div>
+                </div>
+                <!-- Dashboard Grid -->
+                <div class="grid">
+                    <div class="grid-item">
+                        <h3><i class="fa fa-search"></i> Search Visitor</h3>
+                        <input type="text" id="search-visitor"
+                            placeholder="Enter Name..." />
+                        <div id="search-results"></div>
+                    </div>
+                    <div class="grid-item">
+                        <h3><i class="fa fa-clock"></i> Recent Check-ins</h3>
+                        <ul id="recent-checkins"></ul>
+                    </div>
+                    <div class="grid-item">
+                        <h3><i class="fa fa-user-tie"></i> Staff Signed In</h3>
+                        <ul id="staff-signed-in"></ul>
+                    </div>
+                </div>
             </div>
-        </header>
-        <main>
-            <!-- Current Visitors Section -->
-            <section id="current-visitors" class="section">
-                <h2>Currently Checked-In Visitors</h2>
+
+            <!-- Current Visitors Page -->
+            <div id="current-visitors" class="page">
+                <h1>Current Visitors</h1>
                 <div class="table-responsive">
                     <table id="current-visitors-table">
                         <thead>
                             <tr>
-                                <th>Photo</th>
                                 <th>Name</th>
                                 <th>Company</th>
                                 <th>Reason</th>
                                 <th>Car Reg</th>
-                                <th>Action</th>
-                                <th>Report</th>
+                                <th>Check-Out</th>
                             </tr>
                         </thead>
-                        <tbody>
-                            <!-- Data populated by admin.js -->
-                        </tbody>
+                        <tbody></tbody>
                     </table>
                 </div>
-            </section>
+            </div>
 
-            <!-- All Visitors Section -->
-            <section id="all-visitors" class="section">
-                <h2>All Visitors</h2>
+            <!-- All Visitors Page -->
+            <div id="all-visitors" class="page">
+                <h1>All Visitors</h1>
                 <div class="table-responsive">
                     <table id="all-visitors-table">
                         <thead>
                             <tr>
-                                <th>Photo</th>
                                 <th>Name</th>
-                                <th>Company</th>
-                                <th>Reason</th>
-                                <th>Car Reg</th>
-                                <th>Checked In</th>
+                                <th>Last Check-In</th>
+                                <th>Actions</th>
                             </tr>
                         </thead>
-                        <tbody>
-                            <!-- Data populated by admin.js -->
-                        </tbody>
+                        <tbody></tbody>
                     </table>
                 </div>
-            </section>
+            </div>
 
-            <!-- Staff Attendance Section -->
-            <section id="staff-attendance" class="section">
-                <h2>Staff Attendance</h2>
+            <!-- Staff Attendance Page -->
+            <div id="staff-attendance" class="page">
+                <h1>Staff Attendance</h1>
                 <div class="table-responsive">
                     <table id="staff-attendance-table">
                         <thead>
                             <tr>
                                 <th>Staff Name</th>
                                 <th>Sign In/Out History</th>
-                                <th>Total Hours Today</th>
+                                <th>Total Hours</th>
                             </tr>
                         </thead>
-                        <tbody>
-                            <!-- Data populated by admin.js -->
-                        </tbody>
+                        <tbody></tbody>
                     </table>
                 </div>
-                <!-- Button to open modal to add a new staff member -->
-                <button id="add-staff-btn" class="btn btn-primary">Add Staff
-                    Member</button>
-            </section>
+            </div>
 
-            <!-- Emergency Report Section -->
-            <section id="emergency-report-section" class="section">
-                <h2>Emergency Report</h2>
-                <button id="generate-report-btn"
-                    class="btn btn-primary">Generate Report</button>
-                <div id="emergency-report" class="report-container"
-                    style="display: none;">
-                    <ul id="report-list"></ul>
-                    <button id="submit-report-btn" class="btn btn-danger">Submit
-                        Report (Check Off Visitors)</button>
-                </div>
-            </section>
-        </main>
+            <!-- Emergency Report Page -->
+            <div id="emergency-report" class="page">
+                <h1>Emergency Report</h1>
+                <button id="generate-report-btn" class="btn btn-danger">
+                    <i class="fa fa-exclamation-triangle"></i> Generate Report
+                </button>
+                <div id="report-output"></div>
+            </div>
+        </div>
+
+        <!-- Footer (Fixed at Bottom) -->
         <footer>
-            <p>&copy; 2025 Sutton Coldfield Town Hall. All Rights Reserved.</p>
+            <p>&copy; 2025 EJP Designs. All Rights Reserved.</p>
         </footer>
-
-        <!-- Modal for Adding Staff Member -->
-        <div id="add-staff-modal" class="modal">
-            <div class="modal-content">
-                <span class="close-btn" id="close-staff-modal">&times;</span>
-                <h2>Add New Staff Member</h2>
-                <input type="text" id="staff-name-input"
-                    placeholder="Staff Name" />
-                <div class="add-options">
-                    <button id="capture-staff-btn"
-                        class="btn btn-primary">Capture Photo</button>
-                    <button id="upload-staff-btn"
-                        class="btn btn-secondary">Upload Photo</button>
-                    <input type="file" id="staff-file-input" accept="image/*"
-                        style="display: none;" />
-                </div>
-                <button id="save-staff-btn" class="btn btn-success">Save Staff
-                    Member</button>
-            </div>
-        </div>
-
-        <!-- Hidden Staff Camera Screen for capturing staff photo -->
-        <div id="staff-camera-screen" class="screen">
-            <div class="centered">
-                <p>Staff: Scanning for face...</p>
-                <video id="staff-video" autoplay playsinline></video>
-                <div id="staff-face-confirmation"
-                    style="margin-top: 20px; display: none;">
-                    <p>Are you <span id="staff-name"></span>?</p>
-                    <button id="staff-yes-btn"
-                        class="btn btn-primary">Yes</button>
-                    <button id="staff-no-btn"
-                        class="btn btn-secondary">No</button>
-                </div>
-                <p id="staff-camera-error"
-                    style="color: red; display: none;">Camera not available.
-                    Please try again.</p>
-            </div>
-        </div>
-
     </body>
 </html>

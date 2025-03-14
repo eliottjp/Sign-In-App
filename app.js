@@ -1,80 +1,39 @@
 document.addEventListener("DOMContentLoaded", function () {
   const db = firebase.firestore();
-  const storage = firebase.storage();
 
   // Global variables
   let currentVisitor = null;
   let currentVisitorDocId = null;
   let stream = null;
-  let onboardingData = {}; // To store additional details
+  let onboardingData = {}; // To store details: name, reason, carReg
 
   // --- Load face-api.js Models (SSD MobileNet v1) ---
   let modelsLoaded = false;
   async function loadFaceApiModels() {
     if (!modelsLoaded) {
+      console.log("Loading face-api models...");
       await faceapi.nets.ssdMobilenetv1.loadFromUri("/models");
       await faceapi.nets.faceLandmark68Net.loadFromUri("/models");
       await faceapi.nets.faceRecognitionNet.loadFromUri("/models");
       modelsLoaded = true;
+      console.log("Models loaded.");
     }
   }
 
-  // --- Capture Face Descriptor ---
+  // --- Capture Face Descriptor from a Video Element ---
   async function captureFaceDescriptor(videoId) {
     await loadFaceApiModels();
     const video = document.getElementById(videoId);
+    if (!video) {
+      console.error("Video element not found:", videoId);
+      return null;
+    }
     const detection = await faceapi
       .detectSingleFace(video, new faceapi.SsdMobilenetv1Options())
       .withFaceLandmarks()
       .withFaceDescriptor();
+    console.log("Detection result for", videoId, ":", detection);
     return detection ? Array.from(detection.descriptor) : null;
-  }
-
-  // --- Capture Snapshot from Video ---
-  async function captureSnapshot(videoId) {
-    const video = document.getElementById(videoId);
-    const canvas = document.createElement("canvas");
-    canvas.width = video.videoWidth || 320;
-    canvas.height = video.videoHeight || 240;
-    const ctx = canvas.getContext("2d");
-    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-    return new Promise((resolve) => {
-      canvas.toBlob((blob) => {
-        resolve(blob);
-      }, "image/jpeg");
-    });
-  }
-
-  // --- Upload Image to Firebase Storage ---
-  async function uploadImage(blob, path) {
-    const fileRef = storage.ref().child(path);
-    await fileRef.put(blob);
-    return await fileRef.getDownloadURL();
-  }
-
-  // --- Delete Image from Firebase Storage ---
-  async function deleteImage(path) {
-    try {
-      await storage.ref().child(path).delete();
-    } catch (err) {
-      console.error("Error deleting old image:", err);
-    }
-  }
-
-  // --- Update Visitor Photo ---
-  async function updateVisitorPhoto(visitorId) {
-    const docRef = db.collection("visitors").doc(visitorId);
-    const docSnap = await docRef.get();
-    const data = docSnap.data();
-    const blob = await captureSnapshot("video");
-    const newPath = `visitorPhotos/${visitorId}_${Date.now()}.jpg`;
-    const newPhotoURL = await uploadImage(blob, newPath);
-    // Delete previous photo if exists
-    if (data.photoPath) {
-      await deleteImage(data.photoPath);
-    }
-    await docRef.update({ photo: newPhotoURL, photoPath: newPath });
-    return newPhotoURL;
   }
 
   // --- Utility: Show/Hide Screens ---
@@ -88,58 +47,6 @@ document.addEventListener("DOMContentLoaded", function () {
     }
   }
 
-  // --- Populate Custom Suggestion Lists ---
-  async function populateVisitorSuggestions() {
-    const container = document.getElementById("visitor-suggestions-container");
-    if (!container) return;
-    container.innerHTML = "";
-    const snapshot = await db.collection("visitors").get();
-    snapshot.forEach((doc) => {
-      const data = doc.data();
-      if (data.name) {
-        const div = document.createElement("div");
-        div.classList.add("suggestion");
-        const img = document.createElement("img");
-        img.src = data.photo || "placeholder.jpg";
-        const span = document.createElement("span");
-        span.innerText = data.name;
-        div.appendChild(img);
-        div.appendChild(span);
-        div.addEventListener("click", () => {
-          document.getElementById("visitor-input").value = data.name;
-        });
-        container.appendChild(div);
-      }
-    });
-  }
-
-  async function populateCheckoutSuggestions() {
-    const container = document.getElementById("checkout-suggestions-container");
-    if (!container) return;
-    container.innerHTML = "";
-    const snapshot = await db
-      .collection("visitors")
-      .where("checkedIn", "==", true)
-      .get();
-    snapshot.forEach((doc) => {
-      const data = doc.data();
-      if (data.name) {
-        const div = document.createElement("div");
-        div.classList.add("suggestion");
-        const img = document.createElement("img");
-        img.src = data.photo || "placeholder.jpg";
-        const span = document.createElement("span");
-        span.innerText = data.name;
-        div.appendChild(img);
-        div.appendChild(span);
-        div.addEventListener("click", () => {
-          document.getElementById("checkout-input").value = data.name;
-        });
-        container.appendChild(div);
-      }
-    });
-  }
-
   // --- Visitor Sign In Flow ---
   async function startSignInFlow() {
     try {
@@ -147,12 +54,10 @@ document.addEventListener("DOMContentLoaded", function () {
       const video = document.getElementById("video");
       video.srcObject = stream;
       showScreen("camera-screen");
-      // Show skip button always
-      // Allow a 2-second delay for faster processing
       setTimeout(async () => {
         const descriptor = await captureFaceDescriptor("video");
         if (!descriptor) {
-          alert("No face detected. Please try again or enter manually.");
+          alert("No face detected. Please try again or sign in manually.");
           showScreen("manual-signin-screen");
           populateVisitorSuggestions();
           return;
@@ -167,7 +72,6 @@ document.addEventListener("DOMContentLoaded", function () {
               data.descriptor
             );
             if (distance < 0.4) {
-              // Adjust threshold as needed
               matched = { id: doc.id, name: data.name };
             }
           }
@@ -176,17 +80,19 @@ document.addEventListener("DOMContentLoaded", function () {
           currentVisitor = matched.name;
           currentVisitorDocId = matched.id;
           onboardingData.name = matched.name;
-          document.getElementById("visitor-name").innerText = matched.name;
-          // Show confirmation prompt with Yes/Skip buttons
-          document.getElementById("face-confirmation").style.display = "block";
+          const visitorNameEl = document.getElementById("visitor-name");
+          if (visitorNameEl) visitorNameEl.innerText = matched.name;
+          const faceConfEl = document.getElementById("face-confirmation");
+          if (faceConfEl) faceConfEl.style.display = "block";
         } else {
           alert("Face not recognized. Please sign in manually.");
           showScreen("manual-signin-screen");
           populateVisitorSuggestions();
         }
-      }, 2000);
+      }, 1500);
     } catch (err) {
-      document.getElementById("camera-error").style.display = "block";
+      const cameraErrorEl = document.getElementById("camera-error");
+      if (cameraErrorEl) cameraErrorEl.style.display = "block";
       console.error("Camera error:", err);
     }
   }
@@ -204,47 +110,44 @@ document.addEventListener("DOMContentLoaded", function () {
       .where("name", "==", name)
       .get();
     if (snapshot.empty) {
+      // Create a new visitor record with the current face descriptor
+      const descriptor = await captureFaceDescriptor("video");
       const docRef = await db.collection("visitors").add({
         name: name,
+        descriptor: descriptor,
         checkedIn: true,
         timestamp: new Date().toISOString(),
       });
       visitorId = docRef.id;
     } else {
       visitorId = snapshot.docs[0].id;
-      await db
-        .collection("visitors")
-        .doc(visitorId)
-        .update({ checkedIn: true });
+      // Update the visitor record with the latest face descriptor
+      const descriptor = await captureFaceDescriptor("video");
+      await db.collection("visitors").doc(visitorId).update({
+        checkedIn: true,
+        descriptor: descriptor,
+      });
     }
     currentVisitor = name;
     currentVisitorDocId = visitorId;
-    // Proceed to onboarding flow for additional details (always ask reason)
-    showScreen("onboarding-4");
+    showScreen("onboarding-4"); // Proceed to the Reason for Visit step
   }
 
   // --- Onboarding Flow: Reason for Visit ---
   document.querySelectorAll(".reason-btn").forEach((button) => {
     button.addEventListener("click", () => {
       onboardingData.reason = button.getAttribute("data-reason");
-      showScreen("onboarding-5");
+      showScreen("onboarding-5"); // Proceed to Car Registration step
     });
   });
 
   // --- Onboarding Flow: Car Registration & Complete Sign In ---
-  document
-    .getElementById("onboarding-5-finish")
-    .addEventListener("click", async () => {
+  const onboarding5FinishBtn = document.getElementById("onboarding-5-finish");
+  if (onboarding5FinishBtn) {
+    onboarding5FinishBtn.addEventListener("click", async () => {
       onboardingData.carReg = document.getElementById("car-reg").value.trim();
-      // Update visitor record with reason and car reg, and capture/update photo
-      await updateVisitorPhoto(currentVisitorDocId);
-      await db
-        .collection("visitors")
-        .doc(currentVisitorDocId)
-        .update({
-          reason: onboardingData.reason || "",
-          carReg: onboardingData.carReg || "",
-        });
+      // At this point, you could update additional fields if needed.
+      // Add a sign in record:
       await db.collection("signIns").add({
         visitorId: currentVisitorDocId,
         timestamp: new Date().toISOString(),
@@ -256,6 +159,7 @@ document.addEventListener("DOMContentLoaded", function () {
       showScreen("confirmation-screen");
       setTimeout(() => location.reload(), 3000);
     });
+  }
 
   // --- Visitor Check Out Flow ---
   async function startCheckOutFlow() {
@@ -281,25 +185,22 @@ document.addEventListener("DOMContentLoaded", function () {
           }
         });
         if (matched) {
-          await db
-            .collection("visitors")
-            .doc(matched.id)
-            .update({ checkedIn: false });
-          await db.collection("checkOuts").add({
-            visitorId: matched.id,
-            timestamp: new Date().toISOString(),
-          });
-          alert("✅ " + matched.name + " checked out.");
-          showScreen("confirmation-screen");
-          setTimeout(() => location.reload(), 3000);
+          currentVisitor = matched.name;
+          currentVisitorDocId = matched.id;
+          const checkoutNameEl = document.getElementById(
+            "checkout-visitor-name"
+          );
+          if (checkoutNameEl) checkoutNameEl.innerText = matched.name;
+          showScreen("checkout-confirmation");
         } else {
           alert("Face not recognized. Please check out manually.");
           showScreen("manual-checkout-screen");
           populateCheckoutSuggestions();
         }
-      }, 2000);
+      }, 1500);
     } catch (err) {
-      document.getElementById("camera-error").style.display = "block";
+      const cameraErrorEl = document.getElementById("camera-error");
+      if (cameraErrorEl) cameraErrorEl.style.display = "block";
       console.error("Camera error:", err);
     }
   }
@@ -329,42 +230,77 @@ document.addEventListener("DOMContentLoaded", function () {
     setTimeout(() => location.reload(), 3000);
   }
 
-  // --- Confirmation Buttons for Recognized Face ---
-  document.getElementById("confirm-btn").addEventListener("click", () => {
-    // Proceed to onboarding even if face recognized to ask reason for visit.
-    if (currentVisitor) {
-      onboardingData.name = currentVisitor;
-      showScreen("onboarding-4");
-    }
-  });
-  document.getElementById("skip-btn").addEventListener("click", () => {
-    showScreen("manual-signin-screen");
-    populateVisitorSuggestions();
-  });
+  // --- Check Out Confirmation Event Listeners ---
+  const checkoutConfirmBtn = document.getElementById("checkout-confirm-btn");
+  if (checkoutConfirmBtn) {
+    checkoutConfirmBtn.addEventListener("click", async () => {
+      await db
+        .collection("visitors")
+        .doc(currentVisitorDocId)
+        .update({ checkedIn: false });
+      await db.collection("checkOuts").add({
+        visitorId: currentVisitorDocId,
+        timestamp: new Date().toISOString(),
+      });
+      alert("✅ " + currentVisitor + " checked out.");
+      showScreen("confirmation-screen");
+      setTimeout(() => location.reload(), 3000);
+    });
+  }
+  const checkoutSkipBtn = document.getElementById("checkout-skip-btn");
+  if (checkoutSkipBtn) {
+    checkoutSkipBtn.addEventListener("click", () => {
+      showScreen("manual-checkout-screen");
+      populateCheckoutSuggestions();
+    });
+  }
+
+  // --- Confirmation Buttons for Sign In ---
+  const confirmBtn = document.getElementById("confirm-btn");
+  if (confirmBtn) {
+    confirmBtn.addEventListener("click", () => {
+      if (currentVisitor) {
+        onboardingData.name = currentVisitor;
+        showScreen("onboarding-4");
+      }
+    });
+  }
+  const skipBtn = document.getElementById("skip-btn");
+  if (skipBtn) {
+    skipBtn.addEventListener("click", () => {
+      showScreen("manual-signin-screen");
+      populateVisitorSuggestions();
+    });
+  }
 
   // --- Always-Visible Skip Button during Scanning ---
-  document.getElementById("camera-skip-btn").addEventListener("click", () => {
-    showScreen("manual-signin-screen");
-    populateVisitorSuggestions();
-  });
+  const cameraSkipBtn = document.getElementById("camera-skip-btn");
+  if (cameraSkipBtn) {
+    cameraSkipBtn.addEventListener("click", () => {
+      showScreen("manual-signin-screen");
+      populateVisitorSuggestions();
+    });
+  }
 
-  // --- Event Listeners for Kiosk Buttons ---
-  document
-    .getElementById("sign-in-btn")
-    .addEventListener("click", startSignInFlow);
-  document
-    .getElementById("finish-signin-btn")
-    .addEventListener("click", finishManualSignIn);
-  document
-    .getElementById("check-out-btn")
-    .addEventListener("click", startCheckOutFlow);
-  document
-    .getElementById("finish-checkout-btn")
-    .addEventListener("click", finishManualCheckOut);
+  // --- Kiosk Button Event Listeners ---
+  const signInBtn = document.getElementById("sign-in-btn");
+  if (signInBtn) {
+    signInBtn.addEventListener("click", startSignInFlow);
+  }
+  const finishSignInBtn = document.getElementById("finish-signin-btn");
+  if (finishSignInBtn) {
+    finishSignInBtn.addEventListener("click", finishManualSignIn);
+  }
+  const checkOutBtn = document.getElementById("check-out-btn");
+  if (checkOutBtn) {
+    checkOutBtn.addEventListener("click", startCheckOutFlow);
+  }
+  const finishCheckOutBtn = document.getElementById("finish-checkout-btn");
+  if (finishCheckOutBtn) {
+    finishCheckOutBtn.addEventListener("click", finishManualCheckOut);
+  }
 
-  // --- Staff Functions (unchanged for now) ---
-  let currentStaff = null;
-  let capturedStaffDescriptor = null;
+  // --- Staff Functions ---
   async function startStaffCamera() {
     try {
       stream = await navigator.mediaDevices.getUserMedia({ video: true });
@@ -372,7 +308,8 @@ document.addEventListener("DOMContentLoaded", function () {
       video.srcObject = stream;
       setTimeout(simulateStaffRecognition, 2000);
     } catch (err) {
-      document.getElementById("staff-camera-error").style.display = "block";
+      const staffCameraError = document.getElementById("staff-camera-error");
+      if (staffCameraError) staffCameraError.style.display = "block";
       console.error("Staff camera error:", err);
     }
   }
@@ -409,13 +346,13 @@ document.addEventListener("DOMContentLoaded", function () {
     }
     if (matchedStaff) {
       currentStaff = matchedStaff;
-      document.getElementById("staff-name").innerText = matchedStaff.name;
-      document.getElementById("staff-face-confirmation").style.display =
-        "block";
+      const staffNameEl = document.getElementById("staff-name");
+      if (staffNameEl) staffNameEl.innerText = matchedStaff.name;
+      const staffFaceConf = document.getElementById("staff-face-confirmation");
+      if (staffFaceConf) staffFaceConf.style.display = "block";
     } else {
-      capturedStaffDescriptor = capturedDescriptor;
       alert("Staff face not recognized. Please register new staff.");
-      showScreen(null);
+      showScreen("add-staff-modal");
     }
   }
 
@@ -455,17 +392,24 @@ document.addEventListener("DOMContentLoaded", function () {
   }
 
   // --- Staff Event Listeners ---
-  document.getElementById("staff-sign-in-btn").addEventListener("click", () => {
-    showScreen("staff-camera-screen");
-    startStaffCamera();
-  });
-  document
-    .getElementById("staff-confirm-btn")
-    .addEventListener("click", async () => {
+  const staffSignInBtn = document.getElementById("staff-sign-in-btn");
+  if (staffSignInBtn) {
+    staffSignInBtn.addEventListener("click", () => {
+      showScreen("staff-camera-screen");
+      startStaffCamera();
+    });
+  }
+  const staffConfirmBtn = document.getElementById("staff-confirm-btn");
+  if (staffConfirmBtn) {
+    staffConfirmBtn.addEventListener("click", async () => {
       if (!currentStaff) return;
       processStaffEvent(currentStaff);
     });
-  document.getElementById("staff-skip-btn").addEventListener("click", () => {
-    showScreen(null);
-  });
+  }
+  const staffSkipBtn = document.getElementById("staff-skip-btn");
+  if (staffSkipBtn) {
+    staffSkipBtn.addEventListener("click", () => {
+      showScreen(null);
+    });
+  }
 });

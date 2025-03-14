@@ -2,8 +2,12 @@
 <html lang="en">
     <head>
         <meta charset="UTF-8" />
-        <meta name="viewport" content="width=device-width, initial-scale=1" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
         <title>Sutton Coldfield Town Hall - Visitor Kiosk</title>
+        <!-- Google Font for a modern look -->
+        <link
+            href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;600&display=swap"
+            rel="stylesheet" />
         <link rel="stylesheet" href="styles.css" />
 
         <!-- Firebase SDKs -->
@@ -36,29 +40,36 @@
     </head>
     <body>
         <div class="overlay"></div>
+        <!-- Countdown Element -->
+        <div id="photo-countdown" class="countdown" style="display:none;"></div>
+
         <div class="container">
             <h1>Sutton Coldfield Town Hall</h1>
             <div class="button-group">
-                <button id="sign-in-btn" class="sign-in">Sign In</button>
-                <button id="check-out-btn" class="sign-out">Check Out</button>
+                <button id="sign-in-btn" class="btn sign-in">Sign In</button>
+                <button id="check-out-btn" class="btn sign-out">Check
+                    Out</button>
             </div>
         </div>
-        <button id="staff-sign-in-btn" class="staff-sign-in">Staff Sign
+        <button id="staff-sign-in-btn" class="btn staff-sign-in">Staff Sign
             In/Out</button>
 
         <!-- Visitor Face Recognition Screen -->
         <div id="camera-screen" class="screen">
             <div class="centered">
-                <p>Scanning your face...</p>
+                <p class="screen-title">Scanning your face...</p>
                 <video id="video" autoplay playsinline></video>
                 <!-- Always visible Skip button -->
-                <button id="camera-skip-btn" class="btn">Skip Scan & Enter
-                    Manually</button>
-                <!-- Confirmation prompt if face recognized -->
-                <div id="face-confirmation" style="display: none;">
+                <button id="camera-skip-btn" class="btn skip-btn">Skip Scan
+                    &amp; Enter Manually</button>
+                <!-- Sign In Confirmation Prompt -->
+                <div id="face-confirmation" class="confirmation"
+                    style="display: none;">
                     <p>Are you <span id="visitor-name"></span>?</p>
-                    <button id="confirm-btn" class="btn">Yes</button>
-                    <button id="skip-btn" class="btn">Skip Scan</button>
+                    <div class="btn-group">
+                        <button id="confirm-btn" class="btn">Yes</button>
+                        <button id="skip-btn" class="btn">Skip Scan</button>
+                    </div>
                 </div>
                 <p id="camera-error" class="error" style="display: none;">Camera
                     not available.</p>
@@ -68,7 +79,7 @@
         <!-- Manual Sign In Screen with Custom Suggestions -->
         <div id="manual-signin-screen" class="screen">
             <div class="centered">
-                <p>Please enter your name:</p>
+                <p class="screen-title">Manual Sign In</p>
                 <input type="text" id="visitor-input"
                     placeholder="Type your name" />
                 <div id="visitor-suggestions-container"></div>
@@ -77,10 +88,23 @@
             </div>
         </div>
 
+        <!-- Photo Preview Screen (Photo Booth Experience) -->
+        <div id="photo-preview-screen" class="screen">
+            <div class="centered">
+                <p class="screen-title">Here's your photo!</p>
+                <img id="photo-preview" src alt="Your Photo Preview" />
+                <div class="btn-group">
+                    <button id="photo-keep-btn" class="btn">Keep Photo</button>
+                    <button id="photo-retake-btn" class="btn">Retake
+                        Photo</button>
+                </div>
+            </div>
+        </div>
+
         <!-- Manual Check Out Screen with Custom Suggestions -->
         <div id="manual-checkout-screen" class="screen">
             <div class="centered">
-                <p>Please select your name to check out:</p>
+                <p class="screen-title">Manual Check Out</p>
                 <input type="text" id="checkout-input"
                     placeholder="Type your name" />
                 <div id="checkout-suggestions-container"></div>
@@ -89,21 +113,33 @@
             </div>
         </div>
 
+        <!-- Checkout Confirmation Prompt -->
+        <div id="checkout-confirmation" class="confirmation"
+            style="display: none;">
+            <p>Are you <span id="checkout-visitor-name"></span>?</p>
+            <div class="btn-group">
+                <button id="checkout-confirm-btn" class="btn">Yes, Check
+                    Out</button>
+                <button id="checkout-skip-btn" class="btn">Skip Scan</button>
+            </div>
+        </div>
+
         <!-- Onboarding Screen: Reason for Visit -->
         <div id="onboarding-4" class="screen centered">
-            <p>Please select your <strong>Reason for Visit</strong>:</p>
-            <button class="reason-btn btn" data-reason="Show">Show</button>
-            <button class="reason-btn btn"
-                data-reason="Viewing">Viewing</button>
-            <button class="reason-btn btn"
-                data-reason="Meeting">Meeting</button>
+            <p class="screen-title">Reason for Visit</p>
+            <div class="btn-group">
+                <button class="btn reason-btn" data-reason="Show">Show</button>
+                <button class="btn reason-btn"
+                    data-reason="Viewing">Viewing</button>
+                <button class="btn reason-btn"
+                    data-reason="Meeting">Meeting</button>
+            </div>
         </div>
 
         <!-- Onboarding Screen: Car Registration -->
         <div id="onboarding-5" class="screen centered">
-            <p>Please enter your <strong>Car Registration</strong> (if parked at
-                back):</p>
-            <input type="text" id="car-reg" placeholder="Car Registration">
+            <p class="screen-title">Car Registration</p>
+            <input type="text" id="car-reg" placeholder="Car Registration" />
             <button id="onboarding-5-finish" class="btn">Finish Sign In</button>
         </div>
 
@@ -118,32 +154,34 @@
         <!-- Staff Face Recognition Screen -->
         <div id="staff-camera-screen" class="screen">
             <div class="centered">
-                <p>Staff: Scanning for face...</p>
+                <p class="screen-title">Staff: Scanning for face...</p>
                 <video id="staff-video" autoplay playsinline></video>
                 <div id="staff-face-confirmation" style="display: none;">
                     <p>Are you <span id="staff-name"></span>?</p>
-                    <button id="staff-confirm-btn" class="btn">Yes</button>
-                    <button id="staff-skip-btn" class="btn">Skip</button>
+                    <div class="btn-group">
+                        <button id="staff-confirm-btn" class="btn">Yes</button>
+                        <button id="staff-skip-btn" class="btn">Skip</button>
+                    </div>
                 </div>
                 <p id="staff-camera-error" class="error"
                     style="display: none;">Camera not available.</p>
             </div>
         </div>
 
-        <!-- Optional Visitor Onboarding Screens (for new visitors) -->
+        <!-- Optional Visitor Onboarding Screens -->
         <div id="onboarding-1" class="screen centered">
-            <p>Please enter your <strong>First Name</strong>:</p>
-            <input type="text" id="first-name" placeholder="First Name">
+            <p class="screen-title">Enter Your First Name</p>
+            <input type="text" id="first-name" placeholder="First Name" />
             <button id="onboarding-1-next" class="btn">Next</button>
         </div>
         <div id="onboarding-2" class="screen centered">
-            <p>Please enter your <strong>Last Name</strong>:</p>
-            <input type="text" id="last-name" placeholder="Last Name">
+            <p class="screen-title">Enter Your Last Name</p>
+            <input type="text" id="last-name" placeholder="Last Name" />
             <button id="onboarding-2-next" class="btn">Next</button>
         </div>
         <div id="onboarding-3" class="screen centered">
-            <p>Please enter your <strong>Company</strong>:</p>
-            <input type="text" id="company" placeholder="Company">
+            <p class="screen-title">Enter Your Company</p>
+            <input type="text" id="company" placeholder="Company" />
             <button id="onboarding-3-next" class="btn">Next</button>
         </div>
     </body>
