@@ -183,58 +183,67 @@ document.addEventListener("DOMContentLoaded", function () {
   }
 
   // ---------------- CURRENT VISITORS ----------------
-  function fetchCurrentVisitors() {
-    // Query all signIns (since signIn documents don’t have a checkedIn field)
-    db.collection("signIns")
-      .orderBy("timestamp", "desc")
-      .onSnapshot((snapshot) => {
-        const tbody = document.querySelector("#current-visitors-table tbody");
-        tbody.innerHTML = "";
+  async function fetchCurrentVisitors() {
+    const tbody = document.querySelector("#current-visitors-table tbody");
+    tbody.innerHTML = "";
 
-        if (snapshot.empty) {
-          tbody.innerHTML =
-            "<tr><td colspan='5'>No visitors currently signed in.</td></tr>";
-          return;
-        }
+    // Get all visitors that are currently signed in.
+    const visitorsSnapshot = await db
+      .collection("visitors")
+      .where("checkedIn", "==", true)
+      .get();
 
-        snapshot.forEach(async (signInDoc) => {
-          const signInData = signInDoc.data();
-          const visitorId = signInData.visitorId;
-          if (!visitorId) return;
+    // Process each visitor
+    for (const doc of visitorsSnapshot.docs) {
+      const visitorData = doc.data();
+      const visitorId = doc.id;
 
-          try {
-            const visitorDoc = await db
-              .collection("visitors")
-              .doc(visitorId)
-              .get();
-            if (visitorDoc.exists) {
-              const visitorData = visitorDoc.data();
-              if (visitorData.checkedIn !== true) return;
-              tbody.innerHTML += `
-                <tr>
-                  <td>${visitorData.name || "N/A"}</td>
-                  <td>${visitorData.company || "Not Provided"}</td>
-                  <td>${signInData.reason || "Not Provided"}</td>
-                  <td>${signInData.carReg || "Not Provided"}</td>
-                  <td>
-                    <button class="btn btn-danger check-out-btn" data-id="${
-                      signInDoc.id
-                    }" data-visitor-id="${visitorId}">
-                      <i class="fa fa-check"></i>
-                    </button>
-                  </td>
-                </tr>
-              `;
-              attachCheckOutHandlers();
-            }
-          } catch (error) {
-            console.error(
-              "Error fetching visitor details for current visitors:",
-              error
-            );
-          }
-        });
+      // Query signIns for the latest record for this visitor.
+      const signInsSnapshot = await db
+        .collection("signIns")
+        .where("visitorId", "==", visitorId)
+        .orderBy("timestamp", "desc")
+        .limit(1)
+        .get();
+
+      let reason = "Not Provided";
+      let carReg = "Not Provided";
+      let signInTime = "N/A";
+
+      if (!signInsSnapshot.empty) {
+        const signInData = signInsSnapshot.docs[0].data();
+        reason = signInData.reason || "Not Provided";
+        carReg = signInData.carReg || "Not Provided";
+        signInTime = new Date(signInData.timestamp).toLocaleString();
+      }
+
+      tbody.innerHTML += `
+        <tr>
+          <td>${visitorData.name || "N/A"}</td>
+          <td>${visitorData.company || "Not Provided"}</td>
+          <td>${reason}</td>
+          <td>${carReg}</td>
+          <td>${signInTime}</td>
+          <td>
+            <button class="btn btn-danger check-out-btn" data-id="${visitorId}">
+              <i class="fa fa-check"></i>
+            </button>
+          </td>
+        </tr>
+      `;
+    }
+
+    // Attach check-out handlers.
+    document.querySelectorAll(".check-out-btn").forEach((button) => {
+      button.addEventListener("click", async function () {
+        const visitorId = this.getAttribute("data-id");
+        await db
+          .collection("visitors")
+          .doc(visitorId)
+          .update({ checkedIn: false });
+        console.log(`Checked out visitor with visitor ID: ${visitorId}`);
       });
+    });
   }
 
   // Attach check-out functionality to update visitor document.

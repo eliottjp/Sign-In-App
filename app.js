@@ -1,20 +1,22 @@
-document.addEventListener("DOMContentLoaded", function () {
+document.addEventListener("DOMContentLoaded", async function () {
   const db = firebase.firestore();
 
   // Global variables
   let currentVisitor = null;
   let currentVisitorDocId = null;
   let stream = null;
-  let onboardingData = {}; // To store details: name, reason, carReg, company
+  let onboardingData = {}; // Stores name, reason, carReg, company
   let modelsLoaded = false;
+  let suggestionDebounceTimer;
 
-  // Preload face-api models on page load for faster scanning.
-  loadFaceApiModels();
+  // Preload face-api models on page load.
+  await loadFaceApiModels();
 
   async function loadFaceApiModels() {
     if (!modelsLoaded) {
       console.log("Preloading face-api models...");
-      await faceapi.nets.ssdMobilenetv1.loadFromUri("/models");
+      // Load the models for TinyFaceDetector, landmarks and recognition.
+      await faceapi.nets.tinyFaceDetector.loadFromUri("/models");
       await faceapi.nets.faceLandmark68Net.loadFromUri("/models");
       await faceapi.nets.faceRecognitionNet.loadFromUri("/models");
       modelsLoaded = true;
@@ -22,20 +24,50 @@ document.addEventListener("DOMContentLoaded", function () {
     }
   }
 
+  // Request a low-resolution video stream.
+  async function getLowResStream() {
+    try {
+      return await navigator.mediaDevices.getUserMedia({
+        video: { width: 320, height: 240 },
+      });
+    } catch (err) {
+      console.error("Error getting video stream:", err);
+      throw err;
+    }
+  }
+
   // --- Capture Face Descriptor from a Video Element ---
   async function captureFaceDescriptor(videoId) {
-    // Assumes models are already loaded.
     const video = document.getElementById(videoId);
     if (!video) {
       console.error("Video element not found:", videoId);
       return null;
     }
     const detection = await faceapi
-      .detectSingleFace(video, new faceapi.SsdMobilenetv1Options())
+      .detectSingleFace(
+        video,
+        new faceapi.TinyFaceDetectorOptions({
+          inputSize: 320,
+          scoreThreshold: 0.5,
+        })
+      )
       .withFaceLandmarks()
       .withFaceDescriptor();
-    console.log("Detection result for", videoId, ":", detection);
-    return detection ? Array.from(detection.descriptor) : null;
+    if (detection) {
+      console.log(
+        "Face detected for",
+        videoId,
+        "Descriptor:",
+        detection.descriptor
+      );
+      return Array.from(detection.descriptor);
+    } else {
+      console.warn(
+        "No face detected in captureFaceDescriptor for video:",
+        videoId
+      );
+      return null;
+    }
   }
 
   // --- Utility: Show/Hide Screens ---
@@ -52,11 +84,10 @@ document.addEventListener("DOMContentLoaded", function () {
   // --- Visitor Sign In Flow ---
   async function startSignInFlow() {
     try {
-      stream = await navigator.mediaDevices.getUserMedia({ video: true });
+      stream = await getLowResStream();
       const video = document.getElementById("video");
       video.srcObject = stream;
       showScreen("camera-screen");
-      // Allow a short delay for the camera feed.
       setTimeout(async () => {
         const descriptor = await captureFaceDescriptor("video");
         if (!descriptor) {
@@ -74,6 +105,7 @@ document.addEventListener("DOMContentLoaded", function () {
               descriptor,
               data.descriptor
             );
+            console.log(`Distance for ${data.name}:`, distance);
             if (distance < 0.4) {
               matched = {
                 id: doc.id,
@@ -84,20 +116,26 @@ document.addEventListener("DOMContentLoaded", function () {
           }
         });
         if (matched) {
-          // If the visitor is already signed in, prompt them to check out.
-          if (matched.checkedIn === true) {
+          // Re-read document to ensure latest status.
+          const docRef = await db.collection("visitors").doc(matched.id).get();
+          const latestData = docRef.data();
+          if (latestData.checkedIn === true) {
             alert(
-              `${matched.name} is already signed in. Please check out instead.`
+              `${latestData.name} is already signed in. Please check out instead.`
             );
             showScreen("manual-checkout-screen");
             populateCheckoutSuggestions();
           } else {
-            // Proceed with sign in.
-            currentVisitor = matched.name;
+            // Update the visitor document to mark them as signed in.
+            await db.collection("visitors").doc(matched.id).update({
+              checkedIn: true,
+              timestamp: new Date().toISOString(),
+            });
+            currentVisitor = latestData.name;
             currentVisitorDocId = matched.id;
-            onboardingData.name = matched.name;
+            onboardingData.name = latestData.name;
             const visitorNameEl = document.getElementById("visitor-name");
-            if (visitorNameEl) visitorNameEl.innerText = matched.name;
+            if (visitorNameEl) visitorNameEl.innerText = latestData.name;
             const faceConfEl = document.getElementById("face-confirmation");
             if (faceConfEl) faceConfEl.style.display = "block";
           }
@@ -115,7 +153,6 @@ document.addEventListener("DOMContentLoaded", function () {
   }
 
   async function finishManualSignIn() {
-    // Get name from visitor-input and company from visitor-company.
     const name = document.getElementById("visitor-input").value.trim();
     const company = document.getElementById("visitor-company")
       ? document.getElementById("visitor-company").value.trim()
@@ -131,6 +168,14 @@ document.addEventListener("DOMContentLoaded", function () {
     onboardingData.name = name;
     onboardingData.company = company;
     let visitorId;
+    // Capture face descriptor before updating or creating.
+    const descriptor = await captureFaceDescriptor("video");
+    if (!descriptor) {
+      alert(
+        "Face not detected. Please ensure your face is visible and try again."
+      );
+      return;
+    }
     const snapshot = await db
       .collection("visitors")
       .where("name", "==", name)
@@ -138,7 +183,6 @@ document.addEventListener("DOMContentLoaded", function () {
     if (!snapshot.empty) {
       const doc = snapshot.docs[0];
       const data = doc.data();
-      // If already signed in, prompt to check out instead.
       if (data.checkedIn === true) {
         alert(`${name} is already signed in. Please check out instead.`);
         showScreen("manual-checkout-screen");
@@ -146,8 +190,6 @@ document.addEventListener("DOMContentLoaded", function () {
         return;
       }
       visitorId = doc.id;
-      // Update the visitor record with the latest face descriptor and company info.
-      const descriptor = await captureFaceDescriptor("video");
       await db.collection("visitors").doc(visitorId).update({
         checkedIn: true,
         descriptor: descriptor,
@@ -155,8 +197,6 @@ document.addEventListener("DOMContentLoaded", function () {
         name_lower: name.toLowerCase(),
       });
     } else {
-      // Create a new visitor record with the current face descriptor.
-      const descriptor = await captureFaceDescriptor("video");
       const docRef = await db.collection("visitors").add({
         name: name,
         name_lower: name.toLowerCase(),
@@ -169,14 +209,14 @@ document.addEventListener("DOMContentLoaded", function () {
     }
     currentVisitor = name;
     currentVisitorDocId = visitorId;
-    showScreen("onboarding-4"); // Proceed to the Reason for Visit step
+    showScreen("onboarding-4"); // Proceed to Reason for Visit
   }
 
   // --- Onboarding Flow: Reason for Visit ---
   document.querySelectorAll(".reason-btn").forEach((button) => {
     button.addEventListener("click", () => {
       onboardingData.reason = button.getAttribute("data-reason");
-      showScreen("onboarding-5"); // Proceed to Car Registration step
+      showScreen("onboarding-5"); // Proceed to Car Registration
     });
   });
 
@@ -185,7 +225,6 @@ document.addEventListener("DOMContentLoaded", function () {
   if (onboarding5FinishBtn) {
     onboarding5FinishBtn.addEventListener("click", async () => {
       onboardingData.carReg = document.getElementById("car-reg").value.trim();
-      // Add a sign in record:
       await db.collection("signIns").add({
         visitorId: currentVisitorDocId,
         timestamp: new Date().toISOString(),
@@ -202,12 +241,18 @@ document.addEventListener("DOMContentLoaded", function () {
   // --- Visitor Check Out Flow ---
   async function startCheckOutFlow() {
     try {
-      stream = await navigator.mediaDevices.getUserMedia({ video: true });
+      stream = await getLowResStream();
       const video = document.getElementById("video");
       video.srcObject = stream;
       showScreen("camera-screen");
       setTimeout(async () => {
         const descriptor = await captureFaceDescriptor("video");
+        if (!descriptor) {
+          alert("No face detected. Please try again or check out manually.");
+          showScreen("manual-checkout-screen");
+          populateCheckoutSuggestions();
+          return;
+        }
         let matched = null;
         const snapshot = await db.collection("visitors").get();
         snapshot.forEach((doc) => {
@@ -217,6 +262,7 @@ document.addEventListener("DOMContentLoaded", function () {
               descriptor,
               data.descriptor
             );
+            console.log(`Checkout distance for ${data.name}:`, distance);
             if (distance < 0.4) {
               matched = {
                 id: doc.id,
@@ -227,26 +273,34 @@ document.addEventListener("DOMContentLoaded", function () {
           }
         });
         if (matched) {
-          // If not signed in, alert that they haven't signed in.
-          if (matched.checkedIn !== true) {
-            alert(`${matched.name} is not currently signed in.`);
+          // Re-read document to ensure the latest "checkedIn" status.
+          const docRef = await db.collection("visitors").doc(matched.id).get();
+          const latestData = docRef.data();
+          console.log("Matched visitor (latest):", latestData);
+          if (latestData.checkedIn !== true) {
+            alert(`${latestData.name} is not currently signed in.`);
             showScreen("manual-checkout-screen");
             populateCheckoutSuggestions();
           } else {
-            currentVisitor = matched.name;
-            currentVisitorDocId = matched.id;
-            const checkoutNameEl = document.getElementById(
-              "checkout-visitor-name"
-            );
-            if (checkoutNameEl) checkoutNameEl.innerText = matched.name;
-            showScreen("checkout-confirmation");
+            // Automatically check out the visitor.
+            await db
+              .collection("visitors")
+              .doc(matched.id)
+              .update({ checkedIn: false });
+            await db.collection("checkOuts").add({
+              visitorId: matched.id,
+              timestamp: new Date().toISOString(),
+            });
+            alert(`✅ ${latestData.name} checked out successfully.`);
+            showScreen("confirmation-screen");
+            setTimeout(() => location.reload(), 3000);
           }
         } else {
           alert("Face not recognized. Please check out manually.");
           showScreen("manual-checkout-screen");
           populateCheckoutSuggestions();
         }
-      }, 1000); // Reduced delay for faster scanning.
+      }, 1000);
     } catch (err) {
       const cameraErrorEl = document.getElementById("camera-error");
       if (cameraErrorEl) cameraErrorEl.style.display = "block";
@@ -349,10 +403,68 @@ document.addEventListener("DOMContentLoaded", function () {
     finishCheckOutBtn.addEventListener("click", finishManualCheckOut);
   }
 
+  // --- Real-Time Suggestion Functions for Manual Sign In & Check Out ---
+  async function populateVisitorSuggestions() {
+    const input = document.getElementById("visitor-input");
+    const container = document.getElementById("visitor-suggestions-container");
+    if (!input || !container) return;
+    const term = input.value.trim().toLowerCase();
+    if (!term) {
+      container.innerHTML = "";
+      return;
+    }
+    const querySnapshot = await db
+      .collection("visitors")
+      .orderBy("name_lower")
+      .startAt(term)
+      .endAt(term + "\uf8ff")
+      .get();
+    let html = "";
+    querySnapshot.forEach((doc) => {
+      const data = doc.data();
+      html += `<div class="suggestion" data-id="${doc.id}">${data.name} (${
+        data.company || "No Company"
+      })</div>`;
+    });
+    container.innerHTML = html;
+    container.querySelectorAll(".suggestion").forEach((item) => {
+      item.addEventListener("click", async () => {
+        const selectedName = item.textContent.split(" (")[0];
+        input.value = selectedName;
+        container.innerHTML = "";
+        const selectedId = item.getAttribute("data-id");
+        const docSnap = await db.collection("visitors").doc(selectedId).get();
+        if (docSnap.exists) {
+          const data = docSnap.data();
+          onboardingData.name = data.name;
+          onboardingData.company = data.company;
+          currentVisitor = data.name;
+          currentVisitorDocId = docSnap.id;
+          // Proceed to the next onboarding screen (Reason for Visit)
+          showScreen("onboarding-4");
+        }
+      });
+    });
+  }
+
+  async function populateCheckoutSuggestions() {
+    const input = document.getElementById("checkout-input");
+    // You can implement similar logic as for sign in suggestions if needed.
+  }
+
+  // Attach suggestion listeners for manual sign in.
+  const visitorInput = document.getElementById("visitor-input");
+  if (visitorInput) {
+    visitorInput.addEventListener("input", () => {
+      clearTimeout(suggestionDebounceTimer);
+      suggestionDebounceTimer = setTimeout(populateVisitorSuggestions, 300);
+    });
+  }
+
   // --- Staff Functions ---
   async function startStaffCamera() {
     try {
-      stream = await navigator.mediaDevices.getUserMedia({ video: true });
+      stream = await getLowResStream();
       const video = document.getElementById("staff-video");
       video.srcObject = stream;
       setTimeout(simulateStaffRecognition, 2000);

@@ -89,6 +89,7 @@ h1 {
   width: 100%;
   background: var(--accent-color);
   color: var(--light-color);
+  pointer-events: auto; /* ensure buttons accept touch events */
 }
 .btn:hover {
   background: rgba(0, 123, 255, 0.8);
