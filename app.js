@@ -8,6 +8,7 @@ document.addEventListener("DOMContentLoaded", async function () {
   let onboardingData = {}; // Stores name, reason, carReg, company
   let modelsLoaded = false;
   let suggestionDebounceTimer;
+  let signInTimer;
 
   // Preload face-api models on page load.
   await loadFaceApiModels();
@@ -88,7 +89,8 @@ document.addEventListener("DOMContentLoaded", async function () {
       const video = document.getElementById("video");
       video.srcObject = stream;
       showScreen("camera-screen");
-      setTimeout(async () => {
+      // Store the timeout ID in signInTimer.
+      signInTimer = setTimeout(async () => {
         const descriptor = await captureFaceDescriptor("video");
         if (!descriptor) {
           alert("No face detected. Please try again or sign in manually.");
@@ -120,13 +122,16 @@ document.addEventListener("DOMContentLoaded", async function () {
           const docRef = await db.collection("visitors").doc(matched.id).get();
           const latestData = docRef.data();
           if (latestData.checkedIn === true) {
-            alert(
-              `${latestData.name} is already signed in. Please check out instead.`
-            );
-            showScreen("manual-checkout-screen");
-            populateCheckoutSuggestions();
+            if (
+              confirm(
+                `${latestData.name} is already signed in. Would you like to sign out?`
+              )
+            ) {
+              startCheckOutFlow();
+            }
+            return;
           } else {
-            // Update the visitor document to mark them as signed in.
+            // Mark visitor as signed in.
             await db.collection("visitors").doc(matched.id).update({
               checkedIn: true,
               timestamp: new Date().toISOString(),
@@ -150,6 +155,23 @@ document.addEventListener("DOMContentLoaded", async function () {
       if (cameraErrorEl) cameraErrorEl.style.display = "block";
       console.error("Camera error:", err);
     }
+  }
+
+  // Updated Skip Scan Button Event Handler
+  const cameraSkipBtn = document.getElementById("camera-skip-btn");
+  if (cameraSkipBtn) {
+    cameraSkipBtn.addEventListener("click", () => {
+      // Stop the video stream.
+      if (stream) {
+        stream.getTracks().forEach((track) => track.stop());
+        stream = null;
+      }
+      // Cancel the scheduled face detection.
+      clearTimeout(signInTimer);
+      // Proceed to manual sign in.
+      showScreen("manual-signin-screen");
+      populateVisitorSuggestions();
+    });
   }
 
   async function finishManualSignIn() {
@@ -184,9 +206,11 @@ document.addEventListener("DOMContentLoaded", async function () {
       const doc = snapshot.docs[0];
       const data = doc.data();
       if (data.checkedIn === true) {
-        alert(`${name} is already signed in. Please check out instead.`);
-        showScreen("manual-checkout-screen");
-        populateCheckoutSuggestions();
+        if (
+          confirm(`${name} is already signed in. Would you like to sign out?`)
+        ) {
+          startCheckOutFlow();
+        }
         return;
       }
       visitorId = doc.id;
@@ -225,11 +249,16 @@ document.addEventListener("DOMContentLoaded", async function () {
   if (onboarding5FinishBtn) {
     onboarding5FinishBtn.addEventListener("click", async () => {
       onboardingData.carReg = document.getElementById("car-reg").value.trim();
-      await db.collection("signIns").add({
+      // Create a new sign in record.
+      const signInDoc = await db.collection("signIns").add({
         visitorId: currentVisitorDocId,
         timestamp: new Date().toISOString(),
         reason: onboardingData.reason || "",
         carReg: onboardingData.carReg || "",
+      });
+      // Optionally, update the visitor document with a reference:
+      await db.collection("visitors").doc(currentVisitorDocId).update({
+        currentSignIn: signInDoc.id,
       });
       document.getElementById("welcome-message").innerText =
         "✅ Welcome, " + onboardingData.name + "!";
@@ -273,7 +302,6 @@ document.addEventListener("DOMContentLoaded", async function () {
           }
         });
         if (matched) {
-          // Re-read document to ensure the latest "checkedIn" status.
           const docRef = await db.collection("visitors").doc(matched.id).get();
           const latestData = docRef.data();
           console.log("Matched visitor (latest):", latestData);
@@ -376,15 +404,6 @@ document.addEventListener("DOMContentLoaded", async function () {
     });
   }
 
-  // --- Always-Visible Skip Button during Scanning ---
-  const cameraSkipBtn = document.getElementById("camera-skip-btn");
-  if (cameraSkipBtn) {
-    cameraSkipBtn.addEventListener("click", () => {
-      showScreen("manual-signin-screen");
-      populateVisitorSuggestions();
-    });
-  }
-
   // --- Kiosk Button Event Listeners ---
   const signInBtn = document.getElementById("sign-in-btn");
   if (signInBtn) {
@@ -440,8 +459,9 @@ document.addEventListener("DOMContentLoaded", async function () {
           onboardingData.company = data.company;
           currentVisitor = data.name;
           currentVisitorDocId = docSnap.id;
-          // Proceed to the next onboarding screen (Reason for Visit)
-          showScreen("onboarding-4");
+          // Proceed to checkout flow (face scan) for automatic check-out.
+          showScreen("camera-screen");
+          startCheckOutFlow();
         }
       });
     });
@@ -449,7 +469,67 @@ document.addEventListener("DOMContentLoaded", async function () {
 
   async function populateCheckoutSuggestions() {
     const input = document.getElementById("checkout-input");
-    // You can implement similar logic as for sign in suggestions if needed.
+    const container = document.getElementById("checkout-suggestions-container");
+    if (!input || !container) return;
+    const term = input.value.trim().toLowerCase();
+    if (!term) {
+      container.innerHTML = "";
+      return;
+    }
+    // Only query visitors that are currently checked in.
+    const querySnapshot = await db
+      .collection("visitors")
+      .where("checkedIn", "==", true)
+      .orderBy("name_lower")
+      .startAt(term)
+      .endAt(term + "\uf8ff")
+      .get();
+    let html = "";
+    querySnapshot.forEach((doc) => {
+      const data = doc.data();
+      html += `<div class="suggestion" data-id="${doc.id}">${data.name} (${
+        data.company || "No Company"
+      })</div>`;
+    });
+    container.innerHTML = html;
+    container.querySelectorAll(".suggestion").forEach((item) => {
+      item.addEventListener("click", async () => {
+        const selectedName = item.textContent.split(" (")[0];
+        input.value = selectedName;
+        container.innerHTML = "";
+        const selectedId = item.getAttribute("data-id");
+        if (confirm(`Do you want to check out ${selectedName}?`)) {
+          await processManualCheckout(selectedId);
+        }
+      });
+    });
+  }
+
+  async function processManualCheckout(visitorId) {
+    // Retrieve the visitor's document.
+    const docSnap = await db.collection("visitors").doc(visitorId).get();
+    if (docSnap.exists) {
+      const data = docSnap.data();
+      if (data.checkedIn !== true) {
+        alert(`${data.name} is not currently signed in.`);
+        return;
+      }
+      // Update the visitor's document to mark them as signed out.
+      await db
+        .collection("visitors")
+        .doc(visitorId)
+        .update({ checkedIn: false });
+      // Create a checkout record in Firestore.
+      await db.collection("checkOuts").add({
+        visitorId: visitorId,
+        timestamp: new Date().toISOString(),
+      });
+      alert(`✅ ${data.name} checked out successfully.`);
+      showScreen("confirmation-screen");
+      setTimeout(() => location.reload(), 3000);
+    } else {
+      alert("No record found for the selected visitor.");
+    }
   }
 
   // Attach suggestion listeners for manual sign in.
@@ -458,6 +538,14 @@ document.addEventListener("DOMContentLoaded", async function () {
     visitorInput.addEventListener("input", () => {
       clearTimeout(suggestionDebounceTimer);
       suggestionDebounceTimer = setTimeout(populateVisitorSuggestions, 300);
+    });
+  }
+  // Attach suggestion listeners for manual checkout.
+  const checkoutInput = document.getElementById("checkout-input");
+  if (checkoutInput) {
+    checkoutInput.addEventListener("input", () => {
+      clearTimeout(suggestionDebounceTimer);
+      suggestionDebounceTimer = setTimeout(populateCheckoutSuggestions, 300);
     });
   }
 

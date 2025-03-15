@@ -2,7 +2,9 @@
 <html lang="en">
     <head>
         <meta charset="UTF-8" />
-        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <!-- The viewport meta tag ensures the page scales properly on mobile -->
+        <meta name="viewport"
+            content="width=device-width, initial-scale=1.0, user-scalable=no" />
         <title>Sutton Coldfield Town Hall - Visitor Kiosk</title>
         <!-- Google Font for a modern look -->
         <link
@@ -186,5 +188,19 @@
             <input type="text" id="company" placeholder="Company" />
             <button id="onboarding-3-next" class="btn">Next</button>
         </div>
+
+        <!-- Inline script to add touch event listeners for mobile -->
+        <script>
+      document.addEventListener("DOMContentLoaded", function () {
+        const buttons = document.querySelectorAll(".btn");
+        buttons.forEach((btn) => {
+          btn.addEventListener("touchstart", function (e) {
+            // Prevent default behavior and simulate a click event.
+            e.preventDefault();
+            btn.click();
+          });
+        });
+      });
+    </script>
     </body>
 </html>
