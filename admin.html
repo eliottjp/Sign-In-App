@@ -78,7 +78,7 @@
             <!-- Dashboard Page -->
             <div id="dashboard" class="page active">
                 <h1>Dashboard</h1>
-                <!-- Counters for Dashboard -->
+                <!-- Dashboard Counters -->
                 <div id="dashboard-counters">
                     <div class="grid">
                         <div class="grid-item">
@@ -183,9 +183,37 @@
             </div>
         </div>
 
+        <!-- Visitor Visits Modal -->
+        <div id="visitor-visits-modal" class="modal"
+            style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background: rgba(0,0,0,0.6); z-index:2000; overflow:auto;">
+            <div class="modal-content"
+                style="background:#fff; margin:10% auto; padding:20px; border-radius:8px; width:80%; max-width:600px; position:relative;">
+                <span class="close"
+                    style="position:absolute; top:10px; right:15px; font-size:24px; cursor:pointer;">&times;</span>
+                <h2>Previous Visits</h2>
+                <div id="visitor-visits-content"></div>
+            </div>
+        </div>
+
         <!-- Footer (Fixed at Bottom) -->
         <footer>
             <p>&copy; 2025 EJP Designs. All Rights Reserved.</p>
         </footer>
+
+        <script>
+      // Modal close logic
+      document.addEventListener("DOMContentLoaded", function () {
+        const modal = document.getElementById("visitor-visits-modal");
+        const closeBtn = modal.querySelector(".close");
+        closeBtn.addEventListener("click", function () {
+          modal.style.display = "none";
+        });
+        window.addEventListener("click", function (event) {
+          if (event.target === modal) {
+            modal.style.display = "none";
+          }
+        });
+      });
+    </script>
     </body>
 </html>

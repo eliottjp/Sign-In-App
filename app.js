@@ -5,13 +5,15 @@ document.addEventListener("DOMContentLoaded", function () {
   let currentVisitor = null;
   let currentVisitorDocId = null;
   let stream = null;
-  let onboardingData = {}; // To store details: name, reason, carReg
-
-  // --- Load face-api.js Models (SSD MobileNet v1) ---
+  let onboardingData = {}; // To store details: name, reason, carReg, company
   let modelsLoaded = false;
+
+  // Preload face-api models on page load for faster scanning.
+  loadFaceApiModels();
+
   async function loadFaceApiModels() {
     if (!modelsLoaded) {
-      console.log("Loading face-api models...");
+      console.log("Preloading face-api models...");
       await faceapi.nets.ssdMobilenetv1.loadFromUri("/models");
       await faceapi.nets.faceLandmark68Net.loadFromUri("/models");
       await faceapi.nets.faceRecognitionNet.loadFromUri("/models");
@@ -22,7 +24,7 @@ document.addEventListener("DOMContentLoaded", function () {
 
   // --- Capture Face Descriptor from a Video Element ---
   async function captureFaceDescriptor(videoId) {
-    await loadFaceApiModels();
+    // Assumes models are already loaded.
     const video = document.getElementById(videoId);
     if (!video) {
       console.error("Video element not found:", videoId);
@@ -54,6 +56,7 @@ document.addEventListener("DOMContentLoaded", function () {
       const video = document.getElementById("video");
       video.srcObject = stream;
       showScreen("camera-screen");
+      // Allow a short delay for the camera feed.
       setTimeout(async () => {
         const descriptor = await captureFaceDescriptor("video");
         if (!descriptor) {
@@ -72,18 +75,32 @@ document.addEventListener("DOMContentLoaded", function () {
               data.descriptor
             );
             if (distance < 0.4) {
-              matched = { id: doc.id, name: data.name };
+              matched = {
+                id: doc.id,
+                name: data.name,
+                checkedIn: data.checkedIn,
+              };
             }
           }
         });
         if (matched) {
-          currentVisitor = matched.name;
-          currentVisitorDocId = matched.id;
-          onboardingData.name = matched.name;
-          const visitorNameEl = document.getElementById("visitor-name");
-          if (visitorNameEl) visitorNameEl.innerText = matched.name;
-          const faceConfEl = document.getElementById("face-confirmation");
-          if (faceConfEl) faceConfEl.style.display = "block";
+          // If the visitor is already signed in, prompt them to check out.
+          if (matched.checkedIn === true) {
+            alert(
+              `${matched.name} is already signed in. Please check out instead.`
+            );
+            showScreen("manual-checkout-screen");
+            populateCheckoutSuggestions();
+          } else {
+            // Proceed with sign in.
+            currentVisitor = matched.name;
+            currentVisitorDocId = matched.id;
+            onboardingData.name = matched.name;
+            const visitorNameEl = document.getElementById("visitor-name");
+            if (visitorNameEl) visitorNameEl.innerText = matched.name;
+            const faceConfEl = document.getElementById("face-confirmation");
+            if (faceConfEl) faceConfEl.style.display = "block";
+          }
         } else {
           alert("Face not recognized. Please sign in manually.");
           showScreen("manual-signin-screen");
@@ -98,35 +115,57 @@ document.addEventListener("DOMContentLoaded", function () {
   }
 
   async function finishManualSignIn() {
+    // Get name from visitor-input and company from visitor-company.
     const name = document.getElementById("visitor-input").value.trim();
+    const company = document.getElementById("visitor-company")
+      ? document.getElementById("visitor-company").value.trim()
+      : "";
     if (!name) {
       alert("Please enter your name.");
       return;
     }
+    if (!company) {
+      alert("Please enter your company.");
+      return;
+    }
     onboardingData.name = name;
+    onboardingData.company = company;
     let visitorId;
     const snapshot = await db
       .collection("visitors")
       .where("name", "==", name)
       .get();
-    if (snapshot.empty) {
-      // Create a new visitor record with the current face descriptor
+    if (!snapshot.empty) {
+      const doc = snapshot.docs[0];
+      const data = doc.data();
+      // If already signed in, prompt to check out instead.
+      if (data.checkedIn === true) {
+        alert(`${name} is already signed in. Please check out instead.`);
+        showScreen("manual-checkout-screen");
+        populateCheckoutSuggestions();
+        return;
+      }
+      visitorId = doc.id;
+      // Update the visitor record with the latest face descriptor and company info.
+      const descriptor = await captureFaceDescriptor("video");
+      await db.collection("visitors").doc(visitorId).update({
+        checkedIn: true,
+        descriptor: descriptor,
+        company: company,
+        name_lower: name.toLowerCase(),
+      });
+    } else {
+      // Create a new visitor record with the current face descriptor.
       const descriptor = await captureFaceDescriptor("video");
       const docRef = await db.collection("visitors").add({
         name: name,
+        name_lower: name.toLowerCase(),
+        company: company,
         descriptor: descriptor,
         checkedIn: true,
         timestamp: new Date().toISOString(),
       });
       visitorId = docRef.id;
-    } else {
-      visitorId = snapshot.docs[0].id;
-      // Update the visitor record with the latest face descriptor
-      const descriptor = await captureFaceDescriptor("video");
-      await db.collection("visitors").doc(visitorId).update({
-        checkedIn: true,
-        descriptor: descriptor,
-      });
     }
     currentVisitor = name;
     currentVisitorDocId = visitorId;
@@ -146,7 +185,6 @@ document.addEventListener("DOMContentLoaded", function () {
   if (onboarding5FinishBtn) {
     onboarding5FinishBtn.addEventListener("click", async () => {
       onboardingData.carReg = document.getElementById("car-reg").value.trim();
-      // At this point, you could update additional fields if needed.
       // Add a sign in record:
       await db.collection("signIns").add({
         visitorId: currentVisitorDocId,
@@ -180,24 +218,35 @@ document.addEventListener("DOMContentLoaded", function () {
               data.descriptor
             );
             if (distance < 0.4) {
-              matched = { id: doc.id, name: data.name };
+              matched = {
+                id: doc.id,
+                name: data.name,
+                checkedIn: data.checkedIn,
+              };
             }
           }
         });
         if (matched) {
-          currentVisitor = matched.name;
-          currentVisitorDocId = matched.id;
-          const checkoutNameEl = document.getElementById(
-            "checkout-visitor-name"
-          );
-          if (checkoutNameEl) checkoutNameEl.innerText = matched.name;
-          showScreen("checkout-confirmation");
+          // If not signed in, alert that they haven't signed in.
+          if (matched.checkedIn !== true) {
+            alert(`${matched.name} is not currently signed in.`);
+            showScreen("manual-checkout-screen");
+            populateCheckoutSuggestions();
+          } else {
+            currentVisitor = matched.name;
+            currentVisitorDocId = matched.id;
+            const checkoutNameEl = document.getElementById(
+              "checkout-visitor-name"
+            );
+            if (checkoutNameEl) checkoutNameEl.innerText = matched.name;
+            showScreen("checkout-confirmation");
+          }
         } else {
           alert("Face not recognized. Please check out manually.");
           showScreen("manual-checkout-screen");
           populateCheckoutSuggestions();
         }
-      }, 1500);
+      }, 1000); // Reduced delay for faster scanning.
     } catch (err) {
       const cameraErrorEl = document.getElementById("camera-error");
       if (cameraErrorEl) cameraErrorEl.style.display = "block";

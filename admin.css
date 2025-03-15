@@ -57,11 +57,47 @@ body {
   margin-left: 260px;
   padding: 20px;
 }
+
+/* Page Sections */
 .page {
   display: none;
 }
 .page.active {
   display: block;
+}
+
+/* Dashboard Header & Counters */
+#dashboard {
+  padding-bottom: 20px;
+}
+#dashboard h1 {
+  margin-bottom: 20px;
+  font-size: 2em;
+  color: #333;
+}
+#dashboard-counters {
+  margin-bottom: 30px;
+}
+#dashboard-counters .grid {
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 20px;
+}
+#dashboard-counters .grid-item {
+  background: linear-gradient(135deg, #ffffff, #f0f0f0);
+  padding: 20px;
+  border-radius: 8px;
+  box-shadow: 0 3px 8px rgba(0, 0, 0, 0.1);
+  text-align: center;
+}
+#dashboard-counters .grid-item h3 {
+  font-size: 1.2em;
+  margin-bottom: 10px;
+  color: #555;
+}
+#dashboard-counters .grid-item span {
+  font-size: 1.8em;
+  font-weight: bold;
+  color: #333;
 }
 
 /* Dashboard Grid */
