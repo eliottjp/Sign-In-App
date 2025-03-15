@@ -19,7 +19,6 @@
             src="https://www.gstatic.com/firebasejs/9.22.0/firebase-firestore-compat.js"></script>
         <script
             src="https://www.gstatic.com/firebasejs/9.22.0/firebase-storage-compat.js"></script>
-
         <!-- Initialize Firebase -->
         <script>
       const firebaseConfig = {
@@ -42,11 +41,12 @@
     </head>
     <body>
         <div class="overlay"></div>
+
         <!-- Countdown Element -->
-        <div id="photo-countdown" class="countdown" style="display:none;"></div>
+        <div id="photo-countdown" class="countdown"></div>
 
         <div class="container">
-            <h1>Sutton Coldfield Town Hall</h1>
+            <h1>EJP Designs Sign In App</h1>
             <div class="button-group">
                 <button id="sign-in-btn" class="btn sign-in">Sign In</button>
                 <button id="check-out-btn" class="btn sign-out">Check
@@ -60,21 +60,24 @@
         <div id="camera-screen" class="screen">
             <div class="centered">
                 <p class="screen-title">Scanning your face...</p>
-                <video id="video" autoplay playsinline></video>
-                <!-- Always visible Skip button -->
-                <button id="camera-skip-btn" class="btn skip-btn">Skip Scan
-                    &amp; Enter Manually</button>
-                <!-- Sign In Confirmation Prompt -->
-                <div id="face-confirmation" class="confirmation"
-                    style="display: none;">
-                    <p>Are you <span id="visitor-name"></span>?</p>
-                    <div class="btn-group">
-                        <button id="confirm-btn" class="btn">Yes</button>
-                        <button id="skip-btn" class="btn">Skip Scan</button>
-                    </div>
+                <div class="circle-container">
+                    <video id="video" autoplay playsinline></video>
                 </div>
                 <p id="camera-error" class="error" style="display: none;">Camera
                     not available.</p>
+            </div>
+        </div>
+
+        <!-- Face Confirmation Screen -->
+        <div id="face-confirmation-screen" class="screen">
+            <div class="centered">
+                <p class="screen-title">Are you <span
+                        id="visitor-name"></span>?</p>
+                <div class="btn-group">
+                    <button id="confirm-btn" class="btn">Yes</button>
+                    <button id="not-me-btn" class="btn">No, I'm not
+                        recognized</button>
+                </div>
             </div>
         </div>
 
@@ -92,7 +95,7 @@
             </div>
         </div>
 
-        <!-- Photo Preview Screen (Photo Booth Experience) -->
+        <!-- Photo Preview Screen -->
         <div id="photo-preview-screen" class="screen">
             <div class="centered">
                 <p class="screen-title">Here's your photo!</p>
@@ -105,7 +108,7 @@
             </div>
         </div>
 
-        <!-- Manual Check Out Screen with Custom Suggestions -->
+        <!-- Manual Check Out Screen -->
         <div id="manual-checkout-screen" class="screen">
             <div class="centered">
                 <p class="screen-title">Manual Check Out</p>
@@ -128,7 +131,7 @@
             </div>
         </div>
 
-        <!-- Onboarding Screen: Reason for Visit -->
+        <!-- Onboarding Screens: Reason for Visit & Car Registration -->
         <div id="onboarding-4" class="screen centered">
             <p class="screen-title">Reason for Visit</p>
             <div class="btn-group">
@@ -139,8 +142,6 @@
                     data-reason="Meeting">Meeting</button>
             </div>
         </div>
-
-        <!-- Onboarding Screen: Car Registration -->
         <div id="onboarding-5" class="screen centered">
             <p class="screen-title">Car Registration</p>
             <input type="text" id="car-reg" placeholder="Car Registration" />
@@ -189,17 +190,27 @@
             <button id="onboarding-3-next" class="btn">Next</button>
         </div>
 
-        <!-- Inline script to add touch event listeners for mobile -->
+        <!-- Custom Modal Container -->
+        <div id="custom-modal" class="modal">
+            <div class="modal-content">
+                <p id="modal-message"></p>
+                <div id="modal-buttons"></div>
+            </div>
+        </div>
+
+        <!-- Inline script for touch events -->
         <script>
       document.addEventListener("DOMContentLoaded", function () {
-        const buttons = document.querySelectorAll(".btn");
-        buttons.forEach((btn) => {
-          btn.addEventListener("touchstart", function (e) {
-            // Prevent default behavior and simulate a click event.
-            e.preventDefault();
-            btn.click();
+        // Only add touchstart events on touch devices.
+        if ("ontouchstart" in window || navigator.maxTouchPoints > 0) {
+          const buttons = document.querySelectorAll(".btn");
+          buttons.forEach((btn) => {
+            btn.addEventListener("touchstart", function (e) {
+              e.preventDefault();
+              btn.click();
+            });
           });
-        });
+        }
       });
     </script>
     </body>

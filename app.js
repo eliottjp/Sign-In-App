@@ -10,6 +10,49 @@ document.addEventListener("DOMContentLoaded", async function () {
   let suggestionDebounceTimer;
   let signInTimer;
 
+  // --- Custom Modal Functions ---
+  function showCustomAlert(message, callback) {
+    const modal = document.getElementById("custom-modal");
+    const modalMessage = document.getElementById("modal-message");
+    const modalButtons = document.getElementById("modal-buttons");
+    modalMessage.innerText = message;
+    modalButtons.innerHTML = `<button id="modal-ok" class="btn">OK</button>`;
+    modal.classList.add("active");
+    document.getElementById("modal-ok").addEventListener(
+      "click",
+      function () {
+        modal.classList.remove("active");
+        if (callback) callback();
+      },
+      { once: true }
+    );
+  }
+
+  function showCustomConfirm(message, yesCallback, noCallback) {
+    const modal = document.getElementById("custom-modal");
+    const modalMessage = document.getElementById("modal-message");
+    const modalButtons = document.getElementById("modal-buttons");
+    modalMessage.innerText = message;
+    modalButtons.innerHTML = `<button id="modal-yes" class="btn">Yes</button><button id="modal-no" class="btn">No</button>`;
+    modal.classList.add("active");
+    document.getElementById("modal-yes").addEventListener(
+      "click",
+      function () {
+        modal.classList.remove("active");
+        if (yesCallback) yesCallback();
+      },
+      { once: true }
+    );
+    document.getElementById("modal-no").addEventListener(
+      "click",
+      function () {
+        modal.classList.remove("active");
+        if (noCallback) noCallback();
+      },
+      { once: true }
+    );
+  }
+
   // Preload face-api models on page load.
   await loadFaceApiModels();
 
@@ -89,13 +132,17 @@ document.addEventListener("DOMContentLoaded", async function () {
       const video = document.getElementById("video");
       video.srcObject = stream;
       showScreen("camera-screen");
-      // Store the timeout ID in signInTimer.
+      // Schedule face detection after a brief delay.
       signInTimer = setTimeout(async () => {
         const descriptor = await captureFaceDescriptor("video");
         if (!descriptor) {
-          alert("No face detected. Please try again or sign in manually.");
-          showScreen("manual-signin-screen");
-          populateVisitorSuggestions();
+          showCustomAlert(
+            "No face detected. Please try again or sign in manually.",
+            () => {
+              showScreen("manual-signin-screen");
+              populateVisitorSuggestions();
+            }
+          );
           return;
         }
         let matched = null;
@@ -122,13 +169,19 @@ document.addEventListener("DOMContentLoaded", async function () {
           const docRef = await db.collection("visitors").doc(matched.id).get();
           const latestData = docRef.data();
           if (latestData.checkedIn === true) {
-            if (
-              confirm(
-                `${latestData.name} is already signed in. Would you like to sign out?`
-              )
-            ) {
-              startCheckOutFlow();
+            // Stop the video stream so the scanning animation stops.
+            if (stream) {
+              stream.getTracks().forEach((track) => track.stop());
+              stream = null;
             }
+            showCustomConfirm(
+              `${latestData.name} is already signed in. Would you like to sign out?`,
+              startCheckOutFlow,
+              () => {
+                showScreen("manual-signin-screen");
+                populateVisitorSuggestions();
+              }
+            );
             return;
           } else {
             // Mark visitor as signed in.
@@ -141,13 +194,17 @@ document.addEventListener("DOMContentLoaded", async function () {
             onboardingData.name = latestData.name;
             const visitorNameEl = document.getElementById("visitor-name");
             if (visitorNameEl) visitorNameEl.innerText = latestData.name;
-            const faceConfEl = document.getElementById("face-confirmation");
-            if (faceConfEl) faceConfEl.style.display = "block";
+            // Transition to face confirmation screen.
+            showScreen("face-confirmation-screen");
           }
         } else {
-          alert("Face not recognized. Please sign in manually.");
-          showScreen("manual-signin-screen");
-          populateVisitorSuggestions();
+          showCustomAlert(
+            "Face not recognized. Please sign in manually.",
+            () => {
+              showScreen("manual-signin-screen");
+              populateVisitorSuggestions();
+            }
+          );
         }
       }, 1500);
     } catch (err) {
@@ -157,43 +214,36 @@ document.addEventListener("DOMContentLoaded", async function () {
     }
   }
 
-  // Updated Skip Scan Button Event Handler
-  const cameraSkipBtn = document.getElementById("camera-skip-btn");
-  if (cameraSkipBtn) {
-    cameraSkipBtn.addEventListener("click", () => {
-      // Stop the video stream.
-      if (stream) {
-        stream.getTracks().forEach((track) => track.stop());
-        stream = null;
-      }
-      // Cancel the scheduled face detection.
-      clearTimeout(signInTimer);
-      // Proceed to manual sign in.
-      showScreen("manual-signin-screen");
-      populateVisitorSuggestions();
-    });
-  }
-
   async function finishManualSignIn() {
     const name = document.getElementById("visitor-input").value.trim();
     const company = document.getElementById("visitor-company")
       ? document.getElementById("visitor-company").value.trim()
       : "";
     if (!name) {
-      alert("Please enter your name.");
+      showCustomAlert("Please enter your name.");
       return;
     }
     if (!company) {
-      alert("Please enter your company.");
+      showCustomAlert("Please enter your company.");
       return;
     }
     onboardingData.name = name;
     onboardingData.company = company;
     let visitorId;
+
+    // If the camera stream is not active, start it.
+    if (!stream) {
+      stream = await getLowResStream();
+      const video = document.getElementById("video");
+      video.srcObject = stream;
+      // Optionally, wait a short moment for the camera to initialize.
+      await new Promise((resolve) => setTimeout(resolve, 500));
+    }
+
     // Capture face descriptor before updating or creating.
     const descriptor = await captureFaceDescriptor("video");
     if (!descriptor) {
-      alert(
+      showCustomAlert(
         "Face not detected. Please ensure your face is visible and try again."
       );
       return;
@@ -206,11 +256,11 @@ document.addEventListener("DOMContentLoaded", async function () {
       const doc = snapshot.docs[0];
       const data = doc.data();
       if (data.checkedIn === true) {
-        if (
-          confirm(`${name} is already signed in. Would you like to sign out?`)
-        ) {
-          startCheckOutFlow();
-        }
+        showCustomConfirm(
+          `${name} is already signed in. Would you like to sign out?`,
+          startCheckOutFlow,
+          () => {}
+        );
         return;
       }
       visitorId = doc.id;
@@ -277,9 +327,13 @@ document.addEventListener("DOMContentLoaded", async function () {
       setTimeout(async () => {
         const descriptor = await captureFaceDescriptor("video");
         if (!descriptor) {
-          alert("No face detected. Please try again or check out manually.");
-          showScreen("manual-checkout-screen");
-          populateCheckoutSuggestions();
+          showCustomAlert(
+            "No face detected. Please try again or check out manually.",
+            () => {
+              showScreen("manual-checkout-screen");
+              populateCheckoutSuggestions();
+            }
+          );
           return;
         }
         let matched = null;
@@ -306,9 +360,13 @@ document.addEventListener("DOMContentLoaded", async function () {
           const latestData = docRef.data();
           console.log("Matched visitor (latest):", latestData);
           if (latestData.checkedIn !== true) {
-            alert(`${latestData.name} is not currently signed in.`);
-            showScreen("manual-checkout-screen");
-            populateCheckoutSuggestions();
+            showCustomAlert(
+              `${latestData.name} is not currently signed in.`,
+              () => {
+                showScreen("manual-checkout-screen");
+                populateCheckoutSuggestions();
+              }
+            );
           } else {
             // Automatically check out the visitor.
             await db
@@ -319,14 +377,22 @@ document.addEventListener("DOMContentLoaded", async function () {
               visitorId: matched.id,
               timestamp: new Date().toISOString(),
             });
-            alert(`✅ ${latestData.name} checked out successfully.`);
-            showScreen("confirmation-screen");
-            setTimeout(() => location.reload(), 3000);
+            showCustomAlert(
+              `✅ ${latestData.name} checked out successfully.`,
+              () => {
+                showScreen("confirmation-screen");
+                setTimeout(() => location.reload(), 3000);
+              }
+            );
           }
         } else {
-          alert("Face not recognized. Please check out manually.");
-          showScreen("manual-checkout-screen");
-          populateCheckoutSuggestions();
+          showCustomAlert(
+            "Face not recognized. Please check out manually.",
+            () => {
+              showScreen("manual-checkout-screen");
+              populateCheckoutSuggestions();
+            }
+          );
         }
       }, 1000);
     } catch (err) {
@@ -339,7 +405,7 @@ document.addEventListener("DOMContentLoaded", async function () {
   async function finishManualCheckOut() {
     const name = document.getElementById("checkout-input").value.trim();
     if (!name) {
-      alert("Please enter your name.");
+      showCustomAlert("Please enter your name.");
       return;
     }
     const snapshot = await db
@@ -347,7 +413,7 @@ document.addEventListener("DOMContentLoaded", async function () {
       .where("name", "==", name)
       .get();
     if (snapshot.empty) {
-      alert("No record found for " + name);
+      showCustomAlert("No record found for " + name);
       return;
     }
     const visitorId = snapshot.docs[0].id;
@@ -356,37 +422,173 @@ document.addEventListener("DOMContentLoaded", async function () {
       visitorId: visitorId,
       timestamp: new Date().toISOString(),
     });
-    alert("✅ " + name + " checked out.");
-    showScreen("confirmation-screen");
-    setTimeout(() => location.reload(), 3000);
-  }
-
-  // --- Check Out Confirmation Event Listeners ---
-  const checkoutConfirmBtn = document.getElementById("checkout-confirm-btn");
-  if (checkoutConfirmBtn) {
-    checkoutConfirmBtn.addEventListener("click", async () => {
-      await db
-        .collection("visitors")
-        .doc(currentVisitorDocId)
-        .update({ checkedIn: false });
-      await db.collection("checkOuts").add({
-        visitorId: currentVisitorDocId,
-        timestamp: new Date().toISOString(),
-      });
-      alert("✅ " + currentVisitor + " checked out.");
+    showCustomAlert("✅ " + name + " checked out.", () => {
       showScreen("confirmation-screen");
       setTimeout(() => location.reload(), 3000);
     });
   }
-  const checkoutSkipBtn = document.getElementById("checkout-skip-btn");
-  if (checkoutSkipBtn) {
-    checkoutSkipBtn.addEventListener("click", () => {
-      showScreen("manual-checkout-screen");
-      populateCheckoutSuggestions();
+
+  async function processManualCheckout(visitorId) {
+    // Retrieve the visitor's document.
+    const docSnap = await db.collection("visitors").doc(visitorId).get();
+    if (docSnap.exists) {
+      const data = docSnap.data();
+      if (data.checkedIn !== true) {
+        showCustomAlert(`${data.name} is not currently signed in.`);
+        return;
+      }
+      // Update the visitor's document to mark them as signed out.
+      await db
+        .collection("visitors")
+        .doc(visitorId)
+        .update({ checkedIn: false });
+      // Create a checkout record in Firestore.
+      await db.collection("checkOuts").add({
+        visitorId: visitorId,
+        timestamp: new Date().toISOString(),
+      });
+      showCustomAlert(`✅ ${data.name} checked out successfully.`, () => {
+        showScreen("confirmation-screen");
+        setTimeout(() => location.reload(), 3000);
+      });
+    } else {
+      showCustomAlert("No record found for the selected visitor.");
+    }
+  }
+
+  // Attach suggestion listeners for manual sign in.
+  const visitorInput = document.getElementById("visitor-input");
+  if (visitorInput) {
+    visitorInput.addEventListener("input", () => {
+      clearTimeout(suggestionDebounceTimer);
+      suggestionDebounceTimer = setTimeout(populateVisitorSuggestions, 300);
+    });
+  }
+  // Attach suggestion listeners for manual checkout.
+  const checkoutInput = document.getElementById("checkout-input");
+  if (checkoutInput) {
+    checkoutInput.addEventListener("input", () => {
+      clearTimeout(suggestionDebounceTimer);
+      suggestionDebounceTimer = setTimeout(populateCheckoutSuggestions, 300);
     });
   }
 
-  // --- Confirmation Buttons for Sign In ---
+  // --- Staff Functions ---
+  async function startStaffCamera() {
+    try {
+      stream = await getLowResStream();
+      const video = document.getElementById("staff-video");
+      video.srcObject = stream;
+      setTimeout(simulateStaffRecognition, 2000);
+    } catch (err) {
+      const staffCameraError = document.getElementById("staff-camera-error");
+      if (staffCameraError) staffCameraError.style.display = "block";
+      console.error("Staff camera error:", err);
+    }
+  }
+
+  async function simulateStaffRecognition() {
+    const capturedDescriptor = await captureFaceDescriptor("staff-video");
+    if (!capturedDescriptor) {
+      console.error("No face detected for staff");
+      return;
+    }
+    let matchedStaff = null;
+    let bestDistance = 0.3;
+    try {
+      const querySnapshot = await db.collection("staff").get();
+      querySnapshot.forEach((doc) => {
+        const data = doc.data();
+        if (data.descriptor) {
+          const distance = faceapi.euclideanDistance(
+            capturedDescriptor,
+            data.descriptor
+          );
+          if (distance < bestDistance) {
+            bestDistance = distance;
+            matchedStaff = {
+              id: doc.id,
+              name: data.name,
+              descriptor: data.descriptor,
+            };
+          }
+        }
+      });
+    } catch (error) {
+      console.error("Error fetching staff:", error);
+    }
+    if (matchedStaff) {
+      currentStaff = matchedStaff;
+      const staffNameEl = document.getElementById("staff-name");
+      if (staffNameEl) staffNameEl.innerText = matchedStaff.name;
+      const staffFaceConf = document.getElementById("staff-face-confirmation");
+      if (staffFaceConf) staffFaceConf.style.display = "block";
+    } else {
+      showCustomAlert("Staff face not recognized. Please register new staff.");
+      showScreen("add-staff-modal");
+    }
+  }
+
+  async function processStaffEvent(staff) {
+    try {
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      const tomorrow = new Date(today);
+      tomorrow.setDate(tomorrow.getDate() + 1);
+      const snapshot = await db
+        .collection("staffEvents")
+        .where("staffId", "==", staff.id)
+        .where("timestamp", ">=", today.toISOString())
+        .where("timestamp", "<", tomorrow.toISOString())
+        .orderBy("timestamp", "desc")
+        .get();
+      let lastEventType = "signOut";
+      if (!snapshot.empty) {
+        lastEventType = snapshot.docs[0].data().type;
+      }
+      const newEventType = lastEventType === "signIn" ? "signOut" : "signIn";
+      await db.collection("staffEvents").add({
+        staffId: staff.id,
+        timestamp: new Date().toISOString(),
+        type: newEventType,
+      });
+      showCustomAlert(
+        `Staff ${staff.name} ${
+          newEventType === "signIn" ? "signed in" : "signed out"
+        }.`,
+        () => {
+          if (stream) stream.getTracks().forEach((t) => t.stop());
+          showScreen(null);
+        }
+      );
+    } catch (error) {
+      console.error("Error processing staff event:", error);
+    }
+  }
+
+  // --- Staff Event Listeners ---
+  const staffSignInBtn = document.getElementById("staff-sign-in-btn");
+  if (staffSignInBtn) {
+    staffSignInBtn.addEventListener("click", () => {
+      showScreen("staff-camera-screen");
+      startStaffCamera();
+    });
+  }
+  const staffConfirmBtn = document.getElementById("staff-confirm-btn");
+  if (staffConfirmBtn) {
+    staffConfirmBtn.addEventListener("click", async () => {
+      if (!currentStaff) return;
+      processStaffEvent(currentStaff);
+    });
+  }
+  const staffSkipBtn = document.getElementById("staff-skip-btn");
+  if (staffSkipBtn) {
+    staffSkipBtn.addEventListener("click", () => {
+      showScreen(null);
+    });
+  }
+
+  // --- Confirmation Buttons for Face Confirmation Screen ---
   const confirmBtn = document.getElementById("confirm-btn");
   if (confirmBtn) {
     confirmBtn.addEventListener("click", () => {
@@ -396,9 +598,9 @@ document.addEventListener("DOMContentLoaded", async function () {
       }
     });
   }
-  const skipBtn = document.getElementById("skip-btn");
-  if (skipBtn) {
-    skipBtn.addEventListener("click", () => {
+  const notMeBtn = document.getElementById("not-me-btn");
+  if (notMeBtn) {
+    notMeBtn.addEventListener("click", () => {
       showScreen("manual-signin-screen");
       populateVisitorSuggestions();
     });
@@ -476,33 +678,43 @@ document.addEventListener("DOMContentLoaded", async function () {
       container.innerHTML = "";
       return;
     }
-    // Only query visitors that are currently checked in.
-    const querySnapshot = await db
-      .collection("visitors")
-      .where("checkedIn", "==", true)
-      .orderBy("name_lower")
-      .startAt(term)
-      .endAt(term + "\uf8ff")
-      .get();
-    let html = "";
-    querySnapshot.forEach((doc) => {
-      const data = doc.data();
-      html += `<div class="suggestion" data-id="${doc.id}">${data.name} (${
-        data.company || "No Company"
-      })</div>`;
-    });
-    container.innerHTML = html;
-    container.querySelectorAll(".suggestion").forEach((item) => {
-      item.addEventListener("click", async () => {
-        const selectedName = item.textContent.split(" (")[0];
-        input.value = selectedName;
-        container.innerHTML = "";
-        const selectedId = item.getAttribute("data-id");
-        if (confirm(`Do you want to check out ${selectedName}?`)) {
-          await processManualCheckout(selectedId);
-        }
+    try {
+      const querySnapshot = await db
+        .collection("visitors")
+        .where("checkedIn", "==", true)
+        .orderBy("name_lower")
+        .startAt(term)
+        .endAt(term + "\uf8ff")
+        .get();
+      let html = "";
+      querySnapshot.forEach((doc) => {
+        const data = doc.data();
+        html += `<div class="suggestion" data-id="${doc.id}">${data.name} (${
+          data.company || "No Company"
+        })</div>`;
       });
-    });
+      if (!html) {
+        html = `<div class="suggestion">No matching visitors</div>`;
+      }
+      container.innerHTML = html;
+      container.querySelectorAll(".suggestion").forEach((item) => {
+        item.addEventListener("click", async () => {
+          const selectedName = item.textContent.split(" (")[0];
+          input.value = selectedName;
+          container.innerHTML = "";
+          const selectedId = item.getAttribute("data-id");
+          showCustomConfirm(
+            `Do you want to check out ${selectedName}?`,
+            async () => {
+              await processManualCheckout(selectedId);
+            },
+            () => {}
+          );
+        });
+      });
+    } catch (error) {
+      console.error("Error populating checkout suggestions:", error);
+    }
   }
 
   async function processManualCheckout(visitorId) {
@@ -511,7 +723,7 @@ document.addEventListener("DOMContentLoaded", async function () {
     if (docSnap.exists) {
       const data = docSnap.data();
       if (data.checkedIn !== true) {
-        alert(`${data.name} is not currently signed in.`);
+        showCustomAlert(`${data.name} is not currently signed in.`);
         return;
       }
       // Update the visitor's document to mark them as signed out.
@@ -524,141 +736,12 @@ document.addEventListener("DOMContentLoaded", async function () {
         visitorId: visitorId,
         timestamp: new Date().toISOString(),
       });
-      alert(`✅ ${data.name} checked out successfully.`);
-      showScreen("confirmation-screen");
-      setTimeout(() => location.reload(), 3000);
-    } else {
-      alert("No record found for the selected visitor.");
-    }
-  }
-
-  // Attach suggestion listeners for manual sign in.
-  const visitorInput = document.getElementById("visitor-input");
-  if (visitorInput) {
-    visitorInput.addEventListener("input", () => {
-      clearTimeout(suggestionDebounceTimer);
-      suggestionDebounceTimer = setTimeout(populateVisitorSuggestions, 300);
-    });
-  }
-  // Attach suggestion listeners for manual checkout.
-  const checkoutInput = document.getElementById("checkout-input");
-  if (checkoutInput) {
-    checkoutInput.addEventListener("input", () => {
-      clearTimeout(suggestionDebounceTimer);
-      suggestionDebounceTimer = setTimeout(populateCheckoutSuggestions, 300);
-    });
-  }
-
-  // --- Staff Functions ---
-  async function startStaffCamera() {
-    try {
-      stream = await getLowResStream();
-      const video = document.getElementById("staff-video");
-      video.srcObject = stream;
-      setTimeout(simulateStaffRecognition, 2000);
-    } catch (err) {
-      const staffCameraError = document.getElementById("staff-camera-error");
-      if (staffCameraError) staffCameraError.style.display = "block";
-      console.error("Staff camera error:", err);
-    }
-  }
-
-  async function simulateStaffRecognition() {
-    const capturedDescriptor = await captureFaceDescriptor("staff-video");
-    if (!capturedDescriptor) {
-      console.error("No face detected for staff");
-      return;
-    }
-    let matchedStaff = null;
-    let bestDistance = 0.3;
-    try {
-      const querySnapshot = await db.collection("staff").get();
-      querySnapshot.forEach((doc) => {
-        const data = doc.data();
-        if (data.descriptor) {
-          const distance = faceapi.euclideanDistance(
-            capturedDescriptor,
-            data.descriptor
-          );
-          if (distance < bestDistance) {
-            bestDistance = distance;
-            matchedStaff = {
-              id: doc.id,
-              name: data.name,
-              descriptor: data.descriptor,
-            };
-          }
-        }
+      showCustomAlert(`✅ ${data.name} checked out successfully.`, () => {
+        showScreen("confirmation-screen");
+        setTimeout(() => location.reload(), 3000);
       });
-    } catch (error) {
-      console.error("Error fetching staff:", error);
-    }
-    if (matchedStaff) {
-      currentStaff = matchedStaff;
-      const staffNameEl = document.getElementById("staff-name");
-      if (staffNameEl) staffNameEl.innerText = matchedStaff.name;
-      const staffFaceConf = document.getElementById("staff-face-confirmation");
-      if (staffFaceConf) staffFaceConf.style.display = "block";
     } else {
-      alert("Staff face not recognized. Please register new staff.");
-      showScreen("add-staff-modal");
+      showCustomAlert("No record found for the selected visitor.");
     }
-  }
-
-  async function processStaffEvent(staff) {
-    try {
-      const today = new Date();
-      today.setHours(0, 0, 0, 0);
-      const tomorrow = new Date(today);
-      tomorrow.setDate(tomorrow.getDate() + 1);
-      const snapshot = await db
-        .collection("staffEvents")
-        .where("staffId", "==", staff.id)
-        .where("timestamp", ">=", today.toISOString())
-        .where("timestamp", "<", tomorrow.toISOString())
-        .orderBy("timestamp", "desc")
-        .get();
-      let lastEventType = "signOut";
-      if (!snapshot.empty) {
-        lastEventType = snapshot.docs[0].data().type;
-      }
-      const newEventType = lastEventType === "signIn" ? "signOut" : "signIn";
-      await db.collection("staffEvents").add({
-        staffId: staff.id,
-        timestamp: new Date().toISOString(),
-        type: newEventType,
-      });
-      alert(
-        `Staff ${staff.name} ${
-          newEventType === "signIn" ? "signed in" : "signed out"
-        }.`
-      );
-      if (stream) stream.getTracks().forEach((t) => t.stop());
-      showScreen(null);
-    } catch (error) {
-      console.error("Error processing staff event:", error);
-    }
-  }
-
-  // --- Staff Event Listeners ---
-  const staffSignInBtn = document.getElementById("staff-sign-in-btn");
-  if (staffSignInBtn) {
-    staffSignInBtn.addEventListener("click", () => {
-      showScreen("staff-camera-screen");
-      startStaffCamera();
-    });
-  }
-  const staffConfirmBtn = document.getElementById("staff-confirm-btn");
-  if (staffConfirmBtn) {
-    staffConfirmBtn.addEventListener("click", async () => {
-      if (!currentStaff) return;
-      processStaffEvent(currentStaff);
-    });
-  }
-  const staffSkipBtn = document.getElementById("staff-skip-btn");
-  if (staffSkipBtn) {
-    staffSkipBtn.addEventListener("click", () => {
-      showScreen(null);
-    });
   }
 });

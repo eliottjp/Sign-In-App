@@ -1,13 +1,13 @@
-/* CSS Variables for colors and fonts */
+/* New Color Palette & Fonts */
 :root {
-  --primary-color: #28a745;
-  --secondary-color: #dc3545;
-  --accent-color: #007bff;
-  --dark-bg: rgba(0, 0, 0, 0.85);
-  --overlay-bg: rgba(0, 0, 0, 0.6);
-  --light-color: #fff;
+  --primary-color: #f12121; /* teal-ish for sign in */
+  --secondary-color: #28b3c6; /* red for sign out */
+  --accent-color: #f12121; /* blue accent */
+  --bg-color: #f5f5f5; /* light background for forms */
+  --text-color: #333; /* dark text */
+  --overlay-color: rgba(0, 0, 0, 0.5);
   --font-family: "Poppins", sans-serif;
-  --btn-padding: 1rem;
+  --transition-duration: 0.4s;
 }
 
 /* Reset & Base Styles */
@@ -22,53 +22,70 @@ body {
   font-family: var(--font-family);
 }
 body {
-  background: url("IMG_9885.JPG") no-repeat center center fixed;
-  background-size: cover;
+  background: linear-gradient(135deg, #ece9e6, #ffffff);
   display: flex;
   align-items: center;
   justify-content: center;
+  color: var(--text-color);
   position: relative;
-  color: var(--light-color);
+  /* Use your background image */
+  background: url("EJP-bg.png") no-repeat center center fixed;
+  background-size: cover;
+  z-index: 0;
+}
+/* Create a blurred copy of the background */
+body::before {
+  content: "";
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: inherit;
+  filter: blur(4px);
+  z-index: -2;
 }
 
-/* Overlay */
+/* Overlay with a dark, semi-transparent layer */
+body::after {
+  content: "";
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: rgba(0, 0, 0, 0.5);
+  z-index: -1;
+}
+
+/* Optional Overlay if needed */
 .overlay {
   position: absolute;
   top: 0;
   left: 0;
   width: 100%;
   height: 100%;
-  background: var(--overlay-bg);
+  background: var(--overlay-color);
   z-index: 1;
 }
 
-/* Countdown */
-.countdown {
-  position: fixed;
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%);
-  font-size: 4rem;
-  font-weight: 600;
-  color: var(--light-color);
-  z-index: 4;
-}
-
-/* Main Container */
+/* Container - Card Style */
 .container {
   position: relative;
   z-index: 2;
   width: 90%;
   max-width: 500px;
-  text-align: center;
+  background: var(--bg-color);
   padding: 2rem;
-  background: var(--dark-bg);
-  border-radius: 10px;
-  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.4);
+  border-radius: 12px;
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.1);
+  text-align: center;
+  margin: 1rem;
 }
 h1 {
   margin-bottom: 1.5rem;
-  font-size: 2.2rem;
+  font-size: 2rem;
+  color: var(--primary-color);
 }
 
 /* Button Group */
@@ -78,21 +95,20 @@ h1 {
   gap: 1rem;
 }
 
-/* Buttons */
+/* Buttons - Modern Flat Style */
 .btn {
-  padding: var(--btn-padding);
+  padding: 1rem;
   font-size: 1.1rem;
   border: none;
-  border-radius: 5px;
+  border-radius: 8px;
   cursor: pointer;
-  transition: background 0.3s ease;
+  transition: background var(--transition-duration) ease;
   width: 100%;
   background: var(--accent-color);
-  color: var(--light-color);
-  pointer-events: auto; /* ensure buttons accept touch events */
+  color: #fff;
 }
 .btn:hover {
-  background: rgba(0, 123, 255, 0.8);
+  background: #0277bd;
 }
 .sign-in {
   background: var(--primary-color);
@@ -108,11 +124,11 @@ h1 {
   transform: translateX(-50%);
   padding: 0.8rem 1.5rem;
   border-radius: 20px;
-  z-index: 2;
   font-size: 1rem;
+  z-index: 2;
 }
 
-/* Screens */
+/* Screens – Each “page” has smooth fade/slide transitions */
 .screen {
   display: none;
   position: fixed;
@@ -120,17 +136,23 @@ h1 {
   left: 0;
   width: 100%;
   height: 100%;
-  z-index: 3;
-  background: var(--dark-bg);
-  color: var(--light-color);
+  background: var(--bg-color);
+  color: var(--text-color);
   padding: 2rem;
   overflow-y: auto;
+  z-index: 3;
+  opacity: 0;
+  transform: translateY(20px);
+  transition: opacity var(--transition-duration) ease,
+    transform var(--transition-duration) ease;
 }
 .screen.active {
   display: flex;
   align-items: center;
   justify-content: center;
   flex-direction: column;
+  opacity: 1;
+  transform: translateY(0);
 }
 
 /* Centered Content */
@@ -140,9 +162,10 @@ h1 {
 .screen-title {
   font-size: 1.8rem;
   margin-bottom: 1rem;
+  color: var(--primary-color);
 }
 
-/* Inputs */
+/* Input Fields */
 input[type="text"] {
   padding: 0.8rem;
   font-size: 1rem;
@@ -150,27 +173,30 @@ input[type="text"] {
   max-width: 300px;
   margin: 1rem auto;
   display: block;
-  border-radius: 4px;
-  border: none;
+  border-radius: 6px;
+  border: 1px solid #ccc;
+  outline: none;
+  transition: border 0.3s ease;
+}
+input[type="text"]:focus {
+  border-color: var(--accent-color);
 }
 
-/* Video */
+/* Video Elements */
 video {
   display: block;
   margin: 1.5rem auto;
   width: 320px;
   height: 240px;
   background: #000;
-  border-radius: 4px;
+  border-radius: 8px;
 }
 
-/* Error Messages */
+/* Error Messages & Confirmations */
 .error {
-  color: #ff8080;
+  color: var(--secondary-color);
   margin-top: 1rem;
 }
-
-/* Confirmation Prompt */
 .confirmation {
   margin-top: 1rem;
 }
@@ -183,40 +209,170 @@ video {
   justify-content: center;
 }
 
-/* Suggestion Containers */
+/* Suggestions Containers */
 #visitor-suggestions-container,
 #checkout-suggestions-container {
   max-width: 300px;
   margin: 1rem auto;
   padding: 0.5rem;
-  background: rgba(255, 255, 255, 0.1);
-  border-radius: 4px;
+  background: #fff;
+  border-radius: 6px;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
 }
 .suggestion {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
   padding: 0.5rem;
   cursor: pointer;
   transition: background 0.2s;
 }
 .suggestion:hover {
-  background: rgba(255, 255, 255, 0.2);
-}
-.suggestion img {
-  width: 40px;
-  height: 40px;
-  border-radius: 4px;
-  object-fit: cover;
-}
-.suggestion span {
-  flex: 1;
+  background: #f0f0f0;
 }
 
 /* Photo Preview */
 #photo-preview {
   max-width: 320px;
   margin: 1rem auto;
-  border-radius: 4px;
-  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3);
+  border-radius: 8px;
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+}
+
+/* Countdown (if used) */
+.countdown {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  font-size: 4rem;
+  font-weight: 600;
+  color: var(--primary-color);
+  z-index: 4;
+}
+
+/* Media Query for Tablets/iPad */
+@media (min-width: 768px) {
+  .container {
+    max-width: 600px;
+    padding: 2.5rem;
+  }
+  h1 {
+    font-size: 2.4rem;
+  }
+  .btn {
+    font-size: 1.2rem;
+    padding: 1.2rem;
+  }
+  input[type="text"] {
+    font-size: 1.1rem;
+  }
+  .screen-title {
+    font-size: 2rem;
+  }
+}
+
+/* Increase the main container size */
+.container {
+  max-width: 700px; /* increased max width */
+  padding: 2.5rem;
+  /* existing properties... */
+}
+
+/* New Circle Container for Face Scanning */
+.circle-container {
+  width: 360px; /* adjust as needed */
+  height: 360px;
+  border-radius: 50%;
+  overflow: hidden;
+  position: relative;
+  margin: 1.5rem auto;
+  border: 5px solid var(--accent-color);
+  animation: pulse 1.5s infinite;
+}
+
+/* Ensure the video fills the circular container */
+.circle-container video {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+/* Pulse Animation for the scanning effect */
+@keyframes pulse {
+  0% {
+    transform: scale(1);
+    box-shadow: 0 0 0 0 rgba(2, 136, 209, 0.7);
+  }
+  70% {
+    transform: scale(1.05);
+    box-shadow: 0 0 0 20px rgba(2, 136, 209, 0);
+  }
+  100% {
+    transform: scale(1);
+    box-shadow: 0 0 0 0 rgba(2, 136, 209, 0);
+  }
+}
+
+/* Custom Modal Styles */
+.modal {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: rgba(0, 0, 0, 0.7);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 9999;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.3s ease;
+}
+
+.modal.active {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.modal-content {
+  background: #fff;
+  padding: 30px;
+  border-radius: 10px;
+  max-width: 400px;
+  width: 90%;
+  text-align: center;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  animation: slideIn 0.3s ease-out;
+}
+
+@keyframes slideIn {
+  from {
+    transform: translateY(-20px);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+.modal-content p {
+  margin-bottom: 20px;
+  font-size: 1.2rem;
+  color: var(--text-color);
+}
+
+.modal-content .btn {
+  background: var(--accent-color);
+  color: #fff;
+  border: none;
+  padding: 10px 20px;
+  margin: 0 5px;
+  border-radius: 5px;
+  font-size: 1rem;
+  cursor: pointer;
+  transition: background 0.3s ease;
+}
+
+.modal-content .btn:hover {
+  background: #0277bd;
 }
