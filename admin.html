@@ -2,28 +2,24 @@
 <html lang="en">
     <head>
         <meta charset="UTF-8" />
-        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <!-- Viewport meta for mobile -->
+        <meta name="viewport"
+            content="width=device-width, initial-scale=1.0, user-scalable=no" />
         <title>Admin Dashboard - Visitor & Staff Management</title>
-
-        <!-- Google Font for a modern look -->
+        <!-- Google Font -->
         <link
             href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;600&display=swap"
             rel="stylesheet" />
-
         <!-- Font Awesome Icons -->
-        <link
-            rel="stylesheet"
+        <link rel="stylesheet"
             href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.7.2/css/all.min.css" />
-
         <!-- Custom Admin CSS -->
         <link rel="stylesheet" href="admin.css" />
-
         <!-- Firebase SDKs -->
         <script
             src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
         <script
             src="https://www.gstatic.com/firebasejs/9.22.0/firebase-firestore-compat.js"></script>
-
         <!-- Firebase Configuration -->
         <script>
       const firebaseConfig = {
@@ -36,8 +32,10 @@
       };
       firebase.initializeApp(firebaseConfig);
     </script>
-
-        <!-- Custom Admin JS -->
+        <!-- Load face-api.js BEFORE admin.js -->
+        <script
+            src="https://cdn.jsdelivr.net/npm/face-api.js/dist/face-api.min.js"></script>
+        <!-- Custom Admin JS (deferred) -->
         <script defer src="admin.js"></script>
     </head>
     <body>
@@ -46,31 +44,26 @@
             <h2>Admin Dashboard</h2>
             <nav>
                 <ul>
-                    <li>
-                        <a href="#" data-page="dashboard" class="active"><i
-                                class="fa fa-home"></i> Dashboard</a>
-                    </li>
-                    <li>
-                        <a href="#" data-page="current-visitors"><i
+                    <li><a href="#" data-page="dashboard" class="active"><i
+                                class="fa fa-home"></i> Dashboard</a></li>
+                    <li><a href="#" data-page="current-visitors"><i
                                 class="fa fa-user-check"></i> Current
-                            Visitors</a>
-                    </li>
-                    <li>
-                        <a href="#" data-page="all-visitors"><i
-                                class="fa fa-users"></i> All Visitors</a>
-                    </li>
-                    <li>
-                        <a href="#" data-page="staff-attendance"><i
-                                class="fa fa-user-tie"></i> Staff</a>
-                    </li>
-                    <li>
-                        <a href="#" data-page="emergency-report"
+                            Visitors</a></li>
+                    <li><a href="#" data-page="all-visitors"><i
+                                class="fa fa-users"></i> All Visitors</a></li>
+                    <li><a href="#" data-page="staff-attendance"><i
+                                class="fa fa-user-tie"></i> Staff</a></li>
+                    <li><a href="#" data-page="emergency-report"
                             class="emergency"><i
                                 class="fa fa-exclamation-triangle"></i>
-                            Emergency</a>
-                    </li>
+                            Emergency</a></li>
                 </ul>
             </nav>
+            <!-- Modal buttons – shown/hidden via JS based on active page -->
+            <button id="add-staff-btn" class="btn btn-primary modal-btn">Add
+                Staff</button>
+            <button id="pre-register-btn"
+                class="btn btn-primary modal-btn">Pre-Register Visitor</button>
         </div>
 
         <!-- Main Content Area -->
@@ -82,22 +75,16 @@
                 <div id="dashboard-counters">
                     <div class="grid">
                         <div class="grid-item">
-                            <h3>
-                                Current Visitors:
-                                <span id="dashboard-current">0</span>
-                            </h3>
+                            <h3>Current Visitors:<span
+                                    id="dashboard-current">0</span></h3>
                         </div>
                         <div class="grid-item">
-                            <h3>
-                                Total Visitors:
-                                <span id="dashboard-all">0</span>
-                            </h3>
+                            <h3>Total Visitors:<span
+                                    id="dashboard-all">0</span></h3>
                         </div>
                         <div class="grid-item">
-                            <h3>
-                                Staff Signed In:
-                                <span id="dashboard-staff">0</span>
-                            </h3>
+                            <h3>Staff Signed In:<span
+                                    id="dashboard-staff">0</span></h3>
                         </div>
                     </div>
                 </div>
@@ -111,7 +98,7 @@
                     </div>
                     <div class="grid-item">
                         <h3><i class="fa fa-clock"></i> Recent Check-ins</h3>
-                        <ul id="recent-checkins"></ul>
+                        <div id="recent-checkins"></div>
                     </div>
                     <div class="grid-item">
                         <h3><i class="fa fa-user-tie"></i> Staff Signed In</h3>
@@ -142,7 +129,13 @@
 
             <!-- All Visitors Page -->
             <div id="all-visitors" class="page">
-                <h1>All Visitors</h1>
+                <div class="page-header" style="position:relative;">
+                    <h1>All Visitors</h1>
+                    <button id="pre-register-btn"
+                        class="btn btn-primary modal-btn"
+                        style="position:absolute; top:20px; right:20px;">Pre-Register
+                        Visitor</button>
+                </div>
                 <div class="table-responsive">
                     <table id="all-visitors-table">
                         <thead>
@@ -159,7 +152,12 @@
 
             <!-- Staff Attendance Page -->
             <div id="staff-attendance" class="page">
-                <h1>Staff Attendance</h1>
+                <div class="page-header" style="position:relative;">
+                    <h1>Staff Attendance</h1>
+                    <button id="add-staff-btn" class="btn btn-primary modal-btn"
+                        style="position:absolute; top:20px; right:20px;">Add
+                        Staff</button>
+                </div>
                 <div class="table-responsive">
                     <table id="staff-attendance-table">
                         <thead>
@@ -177,42 +175,98 @@
             <!-- Emergency Report Page -->
             <div id="emergency-report" class="page">
                 <h1>Emergency Report</h1>
-                <button id="generate-report-btn" class="btn btn-danger">
-                    <i class="fa fa-exclamation-triangle"></i> Generate Report
-                </button>
+                <button id="generate-report-btn" class="btn btn-danger"><i
+                        class="fa fa-exclamation-triangle"></i> Generate
+                    Report</button>
                 <div id="report-output"></div>
             </div>
         </div>
 
+        <!-- Modals -->
+
         <!-- Visitor Visits Modal -->
-        <div id="visitor-visits-modal" class="modal"
-            style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background: rgba(0,0,0,0.6); z-index:2000; overflow:auto;">
-            <div class="modal-content"
-                style="background:#fff; margin:10% auto; padding:20px; border-radius:8px; width:80%; max-width:600px; position:relative;">
-                <span class="close"
-                    style="position:absolute; top:10px; right:15px; font-size:24px; cursor:pointer;">&times;</span>
+        <div id="visitor-visits-modal" class="modal">
+            <div class="modal-content">
+                <span class="close">&times;</span>
                 <h2>Previous Visits</h2>
                 <div id="visitor-visits-content"></div>
             </div>
         </div>
 
-        <!-- Footer (Fixed at Bottom) -->
+        <!-- Add Staff Modal -->
+        <div id="add-staff-modal" class="modal">
+            <div class="modal-content">
+                <span class="close"
+                    onclick="document.getElementById('add-staff-modal').style.display='none';">&times;</span>
+                <h2>Add Staff</h2>
+                <!-- "Add Now" button launches the staff camera modal -->
+                <button id="capture-staff-face-btn"
+                    class="btn btn-secondary">Add Now</button>
+                <input type="text" id="staff-name-input"
+                    placeholder="Staff Name" />
+                <input type="text" id="staff-role-input"
+                    placeholder="Job Role" />
+                <input type="email" id="staff-email-input"
+                    placeholder="Email" />
+                <button class="btn btn-primary" onclick="addStaff()">Add
+                    Staff</button>
+            </div>
+        </div>
+
+        <!-- Pre-Register Visitor Modal -->
+        <div id="pre-register-modal" class="modal">
+            <div class="modal-content">
+                <span class="close"
+                    onclick="document.getElementById('pre-register-modal').style.display='none';">&times;</span>
+                <h2>Pre-Register Visitor</h2>
+                <input type="text" id="pre-visitor-name"
+                    placeholder="Visitor Name" />
+                <input type="text" id="pre-visitor-company"
+                    placeholder="Company" />
+                <input type="text" id="pre-visitor-reason"
+                    placeholder="Reason" />
+                <input type="text" id="pre-visitor-car"
+                    placeholder="Car Registration" />
+                <button class="btn btn-primary"
+                    onclick="preRegisterVisitor()">Pre-Register Visitor</button>
+            </div>
+        </div>
+
+        <!-- Staff Camera Modal (for capturing staff face) -->
+        <div id="staff-camera-screen" class="modal">
+            <div class="modal-content">
+                <span class="close" onclick="closeStaffCamera();">&times;</span>
+                <h2>Capture Staff Face</h2>
+                <video id="staff-video" autoplay playsinline
+                    style="width:320px; height:240px; background:#000;"></video>
+            </div>
+        </div>
+
+        <!-- Footer -->
         <footer>
             <p>&copy; 2025 EJP Designs. All Rights Reserved.</p>
         </footer>
 
+        <!-- Modal Close Logic & Event Listeners -->
         <script>
-      // Modal close logic
       document.addEventListener("DOMContentLoaded", function () {
-        const modal = document.getElementById("visitor-visits-modal");
-        const closeBtn = modal.querySelector(".close");
-        closeBtn.addEventListener("click", function () {
-          modal.style.display = "none";
-        });
-        window.addEventListener("click", function (event) {
-          if (event.target === modal) {
+        // Close modals when clicking the close button or outside.
+        const modals = document.querySelectorAll(".modal");
+        modals.forEach((modal) => {
+          const closeBtn = modal.querySelector(".close");
+          closeBtn.addEventListener("click", function () {
             modal.style.display = "none";
-          }
+          });
+          window.addEventListener("click", function (event) {
+            if (event.target === modal) {
+              modal.style.display = "none";
+            }
+          });
+        });
+
+        // Attach event listener for the "Add Now" button in the Add Staff Modal.
+        document.getElementById("capture-staff-face-btn").addEventListener("click", function () {
+          openStaffCaptureForAdd();
         });
       });
     </script>

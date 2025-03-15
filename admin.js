@@ -1,10 +1,10 @@
-document.addEventListener("DOMContentLoaded", function () {
+document.addEventListener("DOMContentLoaded", async function () {
   const db = firebase.firestore();
 
-  // Initialize the search functionality
+  // Initialize search functionality.
   initSearch();
 
-  // Sidebar Navigation (Handles page switching)
+  // Sidebar Navigation
   document.querySelectorAll(".sidebar nav a").forEach((link) => {
     link.addEventListener("click", function (e) {
       e.preventDefault();
@@ -23,6 +23,20 @@ document.addEventListener("DOMContentLoaded", function () {
       else if (pageId === "all-visitors") fetchAllVisitors();
       else if (pageId === "staff-attendance") fetchStaffAttendance();
       else if (pageId === "emergency-report") generateEmergencyReport();
+
+      // Show/hide modal buttons based on page.
+      const addStaffBtn = document.getElementById("add-staff-btn");
+      const preRegisterBtn = document.getElementById("pre-register-btn");
+      if (pageId === "staff-attendance") {
+        addStaffBtn.style.display = "block";
+        preRegisterBtn.style.display = "none";
+      } else if (pageId === "all-visitors") {
+        preRegisterBtn.style.display = "block";
+        addStaffBtn.style.display = "none";
+      } else {
+        addStaffBtn.style.display = "none";
+        preRegisterBtn.style.display = "none";
+      }
     });
   });
 
@@ -38,13 +52,11 @@ document.addEventListener("DOMContentLoaded", function () {
         return;
       }
       try {
-        // Query visitors by "name_lower" for case-insensitive search.
         const visitorsQuery = db
           .collection("visitors")
           .orderBy("name_lower")
           .startAt(searchTerm.toLowerCase())
           .endAt(searchTerm.toLowerCase() + "\uf8ff");
-
         const snapshot = await visitorsQuery.get();
         let html = "";
         snapshot.forEach((doc) => {
@@ -58,8 +70,6 @@ document.addEventListener("DOMContentLoaded", function () {
         });
         resultsContainer.innerHTML =
           html || "<p>No matching visitors found.</p>";
-
-        // Attach click event to show previous visits
         document.querySelectorAll(".search-result-item").forEach((item) => {
           item.addEventListener("click", function () {
             const visitorId = this.getAttribute("data-id");
@@ -73,20 +83,18 @@ document.addEventListener("DOMContentLoaded", function () {
     });
   }
 
-  // ---------------- DISPLAY VISITOR VISITS ----------------
+  // ---------------- DISPLAY VISITOR VISITS (Modal) ----------------
   async function displayVisitorVisits(visitorId) {
     try {
-      // Query signIns for all visits of this visitor, ordered by timestamp descending.
       const visitsSnapshot = await db
         .collection("signIns")
         .where("visitorId", "==", visitorId)
         .orderBy("timestamp", "desc")
         .get();
-
       let visitsHtml = "";
       visitsSnapshot.forEach((doc) => {
         const data = doc.data();
-        visitsHtml += `<div class="visit-record" style="margin-bottom:10px;">
+        visitsHtml += `<div class="visit-record">
                          <p><strong>Date:</strong> ${new Date(
                            data.timestamp
                          ).toLocaleString()}</p>
@@ -96,12 +104,11 @@ document.addEventListener("DOMContentLoaded", function () {
                          <p><strong>Car Reg:</strong> ${
                            data.carReg || "Not Provided"
                          }</p>
-                       </div><hr/>`;
+                       </div>`;
       });
       if (!visitsHtml) {
         visitsHtml = "<p>No previous visits found for this visitor.</p>";
       }
-
       const modal = document.getElementById("visitor-visits-modal");
       const modalContent = document.getElementById("visitor-visits-content");
       modalContent.innerHTML = visitsHtml;
@@ -113,27 +120,20 @@ document.addEventListener("DOMContentLoaded", function () {
 
   // ---------------- DASHBOARD ----------------
   function loadDashboard() {
-    // Live count of currently signed-in visitors (from signIns)
     db.collection("signIns").onSnapshot((snapshot) => {
       const currentEl = document.getElementById("dashboard-current");
       if (currentEl) currentEl.innerText = snapshot.docs.length;
     });
-
-    // Total number of visitors (from visitors collection)
     db.collection("visitors").onSnapshot((snapshot) => {
       const totalEl = document.getElementById("dashboard-all");
       if (totalEl) totalEl.innerText = snapshot.size;
     });
-
-    // Currently signed-in staff
     db.collection("staffEvents")
       .where("type", "==", "signIn")
       .onSnapshot((snapshot) => {
         const staffEl = document.getElementById("dashboard-staff");
         if (staffEl) staffEl.innerText = snapshot.size;
       });
-
-    // Recent Check-ins (last 5) with visitor data
     db.collection("signIns")
       .orderBy("timestamp", "desc")
       .limit(5)
@@ -144,6 +144,7 @@ document.addEventListener("DOMContentLoaded", function () {
           const signInData = doc.data();
           const visitorId = signInData.visitorId;
           let name = "N/A";
+          let company = "N/A";
           if (visitorId) {
             try {
               const visitorDoc = await db
@@ -153,6 +154,7 @@ document.addEventListener("DOMContentLoaded", function () {
               if (visitorDoc.exists) {
                 const visitorData = visitorDoc.data();
                 name = visitorData.name || "N/A";
+                company = visitorData.company || "Not Provided";
               }
             } catch (error) {
               console.error(
@@ -161,13 +163,17 @@ document.addEventListener("DOMContentLoaded", function () {
               );
             }
           }
-          checkins.innerHTML += `<li>${name} - ${new Date(
-            signInData.timestamp
-          ).toLocaleTimeString()}</li>`;
+          checkins.innerHTML += `
+            <div class="card">
+              <h4>${name}</h4>
+              <p>${company}</p>
+              <p><small>${new Date(
+                signInData.timestamp
+              ).toLocaleTimeString()}</small></p>
+            </div>
+          `;
         });
       });
-
-    // Staff list for dashboard grid
     db.collection("staffEvents")
       .where("type", "==", "signIn")
       .onSnapshot((snapshot) => {
@@ -186,37 +192,28 @@ document.addEventListener("DOMContentLoaded", function () {
   async function fetchCurrentVisitors() {
     const tbody = document.querySelector("#current-visitors-table tbody");
     tbody.innerHTML = "";
-
-    // Get all visitors that are currently signed in.
     const visitorsSnapshot = await db
       .collection("visitors")
       .where("checkedIn", "==", true)
       .get();
-
-    // Process each visitor
     for (const doc of visitorsSnapshot.docs) {
       const visitorData = doc.data();
       const visitorId = doc.id;
-
-      // Query signIns for the latest record for this visitor.
       const signInsSnapshot = await db
         .collection("signIns")
         .where("visitorId", "==", visitorId)
         .orderBy("timestamp", "desc")
         .limit(1)
         .get();
-
       let reason = "Not Provided";
       let carReg = "Not Provided";
       let signInTime = "N/A";
-
       if (!signInsSnapshot.empty) {
         const signInData = signInsSnapshot.docs[0].data();
         reason = signInData.reason || "Not Provided";
         carReg = signInData.carReg || "Not Provided";
         signInTime = new Date(signInData.timestamp).toLocaleString();
       }
-
       tbody.innerHTML += `
         <tr>
           <td>${visitorData.name || "N/A"}</td>
@@ -232,8 +229,6 @@ document.addEventListener("DOMContentLoaded", function () {
         </tr>
       `;
     }
-
-    // Attach check-out handlers.
     document.querySelectorAll(".check-out-btn").forEach((button) => {
       button.addEventListener("click", async function () {
         const visitorId = this.getAttribute("data-id");
@@ -246,40 +241,17 @@ document.addEventListener("DOMContentLoaded", function () {
     });
   }
 
-  // Attach check-out functionality to update visitor document.
-  function attachCheckOutHandlers() {
-    document.querySelectorAll(".check-out-btn").forEach((button) => {
-      button.addEventListener("click", async function () {
-        const visitorId = this.getAttribute("data-visitor-id");
-        try {
-          await db
-            .collection("visitors")
-            .doc(visitorId)
-            .update({ checkedIn: false });
-          console.log(`Checked out visitor with visitor ID: ${visitorId}`);
-        } catch (error) {
-          console.error("Error during check-out:", error);
-        }
-      });
-    });
-  }
-
   // ---------------- ALL VISITORS ----------------
   async function fetchAllVisitors() {
     const tbody = document.querySelector("#all-visitors-table tbody");
-    // Clear the table body.
     tbody.innerHTML = "";
-
-    // Get all visitors (order by name, for instance)
     const visitorsSnapshot = await db
       .collection("visitors")
       .orderBy("name")
       .get();
-    // Use a for..of loop to handle asynchronous queries for each visitor.
     for (const doc of visitorsSnapshot.docs) {
       const visitorData = doc.data();
       const visitorId = doc.id;
-      // Query the signIns collection for the latest check-in for this visitor.
       let lastCheckIn = "N/A";
       const signInsSnapshot = await db
         .collection("signIns")
@@ -292,7 +264,6 @@ document.addEventListener("DOMContentLoaded", function () {
           signInsSnapshot.docs[0].data().timestamp
         ).toLocaleString();
       }
-      // Append the row for this visitor.
       tbody.innerHTML += `
         <tr>
           <td>${visitorData.name || "N/A"}</td>
@@ -308,8 +279,6 @@ document.addEventListener("DOMContentLoaded", function () {
         </tr>
       `;
     }
-
-    // Attach event listeners for the new buttons.
     document.querySelectorAll(".delete-visitor-btn").forEach((button) => {
       button.addEventListener("click", async function () {
         if (confirm("Are you sure you want to delete this visitor?")) {
@@ -320,9 +289,8 @@ document.addEventListener("DOMContentLoaded", function () {
         }
       });
     });
-
     document.querySelectorAll(".view-more-btn").forEach((button) => {
-      button.addEventListener("click", function () {
+      button.addEventListener("click", async function () {
         const visitorId = this.getAttribute("data-id");
         displayVisitorVisits(visitorId);
       });
@@ -339,35 +307,192 @@ document.addEventListener("DOMContentLoaded", function () {
         snapshot.forEach((doc) => {
           const data = doc.data();
           tbody.innerHTML += `
-            <tr>
-              <td>${data.name || "N/A"}</td>
-              <td>${
-                data.type === "signIn" ? "✔ Signed In" : "❌ Signed Out"
-              } - ${new Date(data.timestamp).toLocaleTimeString()}</td>
-              <td>${data.hoursWorked || "N/A"} hrs</td>
-            </tr>`;
+          <tr>
+            <td>${data.name || "N/A"}</td>
+            <td>${
+              data.type === "signIn" ? "✔ Signed In" : "❌ Signed Out"
+            } - ${new Date(data.timestamp).toLocaleTimeString()}</td>
+            <td>${data.hoursWorked || "N/A"} hrs</td>
+          </tr>
+        `;
         });
       });
   }
 
   // ---------------- EMERGENCY REPORT ----------------
-  function generateEmergencyReport() {
-    db.collection("signIns")
-      .get()
-      .then((snapshot) => {
-        let reportHTML = `<h3>Emergency Report - ${new Date().toLocaleString()}</h3><ul>`;
-        snapshot.forEach((doc) => {
-          const data = doc.data();
-          reportHTML += `<li>${data.visitorId} (Checked In: ${new Date(
-            data.timestamp
-          ).toLocaleString()})</li>`;
-        });
-        reportHTML += `</ul>`;
-        document.getElementById("report-output").innerHTML = reportHTML;
-      });
+  async function generateEmergencyReport() {
+    const visitorsSnapshot = await db.collection("visitors").get();
+    let reportHTML = `<h3>Emergency Report - ${new Date().toLocaleString()}</h3><ul>`;
+    for (const doc of visitorsSnapshot.docs) {
+      const visitorData = doc.data();
+      const signInsSnapshot = await db
+        .collection("signIns")
+        .where("visitorId", "==", doc.id)
+        .orderBy("timestamp", "desc")
+        .limit(1)
+        .get();
+      if (!signInsSnapshot.empty) {
+        const signInData = signInsSnapshot.docs[0].data();
+        reportHTML += `<li>${visitorData.name} (Checked In: ${new Date(
+          signInData.timestamp
+        ).toLocaleString()})</li>`;
+      }
+    }
+    reportHTML += `</ul>`;
+    document.getElementById("report-output").innerHTML = reportHTML;
   }
 
-  // Initialize dashboard on load
+  // Initialize dashboard on load.
   document.getElementById("dashboard").classList.add("active");
   loadDashboard();
+  initSearch();
 });
+
+// --------------- Global Functions for Modals & Staff Face Capture ---------------
+
+let staffFaceDescriptor = null;
+
+async function openStaffCaptureForAdd() {
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({
+      video: { width: 320, height: 240 },
+    });
+    const video = document.getElementById("staff-video");
+    video.srcObject = stream;
+    document.getElementById("staff-camera-screen").style.display = "block";
+    setTimeout(async () => {
+      const descriptor = await captureFaceDescriptor("staff-video");
+      if (descriptor) {
+        staffFaceDescriptor = descriptor;
+        alert("Face captured successfully.");
+        closeStaffCamera();
+      } else {
+        alert("Face not detected. Please try again.");
+      }
+    }, 1500);
+  } catch (err) {
+    console.error("Error capturing staff face:", err);
+  }
+}
+
+async function captureFaceDescriptor(videoId) {
+  // Make sure the required model is loaded.
+  await faceapi.nets.ssdMobilenetv1.loadFromUri("/models");
+  const video = document.getElementById(videoId);
+  if (!video) {
+    console.error("Video element not found:", videoId);
+    return null;
+  }
+  const detection = await faceapi
+    .detectSingleFace(
+      video,
+      new faceapi.TinyFaceDetectorOptions({
+        inputSize: 320,
+        scoreThreshold: 0.5,
+      })
+    )
+    .withFaceLandmarks()
+    .withFaceDescriptor();
+  if (detection) {
+    console.log(
+      "Face detected for",
+      videoId,
+      "Descriptor:",
+      detection.descriptor
+    );
+    return Array.from(detection.descriptor);
+  } else {
+    console.warn("No face detected for video:", videoId);
+    return null;
+  }
+}
+
+function closeStaffCamera() {
+  const video = document.getElementById("staff-video");
+  if (video && video.srcObject) {
+    video.srcObject.getTracks().forEach((track) => track.stop());
+  }
+  document.getElementById("staff-camera-screen").style.display = "none";
+}
+window.closeStaffCamera = closeStaffCamera;
+
+function submitStaff() {
+  const name = document.getElementById("staff-name-input").value.trim();
+  const role = document.getElementById("staff-role-input").value.trim();
+  const email = document.getElementById("staff-email-input").value.trim();
+
+  if (!name || !role || !email) {
+    alert("Please fill in all fields for staff.");
+    return;
+  }
+  if (!staffFaceDescriptor) {
+    alert("Please capture your face using the 'Add Now' button.");
+    return;
+  }
+  firebase
+    .firestore()
+    .collection("staff")
+    .add({
+      name: name,
+      role: role,
+      email: email,
+      faceDescriptor: staffFaceDescriptor,
+      hasFaceRec: true,
+      timestamp: new Date().toISOString(),
+    })
+    .then(() => {
+      alert("Staff " + name + " added successfully.");
+      document.getElementById("add-staff-modal").style.display = "none";
+      staffFaceDescriptor = null;
+    })
+    .catch((error) => {
+      console.error("Error adding staff: ", error);
+      alert("Error adding staff.");
+    });
+}
+
+function preRegisterVisitor() {
+  const name = document.getElementById("pre-visitor-name").value.trim();
+  const company = document.getElementById("pre-visitor-company").value.trim();
+  const reason = document.getElementById("pre-visitor-reason").value.trim();
+  const car = document.getElementById("pre-visitor-car").value.trim();
+
+  if (!name || !company || !reason || !car) {
+    alert("Please fill in all fields for visitor pre-registration.");
+    return;
+  }
+
+  firebase
+    .firestore()
+    .collection("visitors")
+    .add({
+      name: name,
+      name_lower: name.toLowerCase(),
+      company: company,
+      reason: reason,
+      carReg: car,
+      checkedIn: false,
+      timestamp: new Date().toISOString(),
+    })
+    .then(() => {
+      alert("Visitor " + name + " pre-registered successfully.");
+      document.getElementById("pre-register-modal").style.display = "none";
+    })
+    .catch((error) => {
+      console.error("Error pre-registering visitor: ", error);
+      alert("Error pre-registering visitor.");
+    });
+}
+
+// Expose global functions for inline onclick handlers.
+window.addStaff = submitStaff;
+window.preRegisterVisitor = preRegisterVisitor;
+window.showScreen = function (screenId) {
+  document.querySelectorAll(".screen").forEach((screen) => {
+    screen.classList.remove("active");
+  });
+  if (screenId) {
+    const el = document.getElementById(screenId);
+    if (el) el.classList.add("active");
+  }
+};
